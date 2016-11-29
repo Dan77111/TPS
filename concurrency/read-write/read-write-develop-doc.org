@@ -1,0 +1,419 @@
+#+TITLE:     read-write_forecast-doc.org
+#+AUTHOR:    Luca Manini
+#+EMAIL:     manini@tiscali.it
+#+DATE:      2015-10-09 ven
+#+DESCRIPTION:
+#+KEYWORDS:
+#+LANGUAGE:  it
+#+OPTIONS:   H:3 num:t toc:nil \n:nil @:t ::t |:t ^:nil -:nil f:t *:t <:t
+#+OPTIONS:   LaTeX:t skip:nil d:(not LOGBOOK) todo:t pri:nil tags:t
+
+#+EXPORT_SELECT_TAGS: export
+#+EXPORT_EXCLUDE_TAGS: noexport
+#+LINK_UP:   
+#+LINK_HOME: 
+#+XSLT:
+
+#+LATEX_CLASS_OPTIONS: [a4paper]
+#+LATEX_HEADER: \usepackage{minted}
+
+Lezione su producer/consumer, reader e writer
+
+* Introduzione
+
+  Questo documento affronta il classico problema di comunicazione e
+  sincronizzazione chiamato producer/consumer o anche reader/writer
+  (ovviamente con ruoli scambiati!).  Il problema nasce quando vi
+  sono due processi (attori, thread) concorrenti che si devono
+  scambiare dei dati usando una risorsa condivisa che non può
+  contenerli tutti per cui reader e writer si devono sincronizzare.
+
+  La soluzione è implementata in Python in modo progressivo,
+  introducendo ciascun pezzo di codice al momento opportuno e
+  spiegando le ragioni della sua presenza.
+
+* Implementazione
+
+** Quali dati scambio e come
+
+   Per rendere l'esempio più semplice possibile i dati scambiati
+   saranno dei numeri interi e lo scambio avverrà usando una variabile
+   globale condivisa.  Il parallelismo sarà quindi implementato usando
+   i thread (così il tutto funziona anche sotto Winzozz).  Una
+   implementazione con i processi, che richiede l'uso di pipe o di
+   socket, è lasciata per esercizio.  Posso quindi già scrivere una
+   riga di codice!
+
+#+BEGIN_SRC python
+  DATA = 123
+#+END_SRC
+
+** Writer e reader
+
+   Adesso scrivo due funzioni che scrivono e leggono numeri interi
+   usando la variabile (OK, il nome!) globale =DATA=.  Il writer avrà
+   come argomento la lista dei numeri da scrivere, il reader non avrà
+   invece bisogno di alcun argomento.  In una eventuale versione più
+   pulita, che non usi variabili globali, ci saranno ovviamente anche
+   altri argomenti.
+
+   La funzione writer contiene ovviamente un ciclo sui suoi argomenti,
+   mentre reader (che non sa quanti siano) dovrà usare un ciclo
+   =while=.  Vedremo poi che ciò complica un po' la terminazione del
+   programma.
+   
+   Come sempre si deve fare attenzione, quando si assegnano valori a
+   nomi globali, a ricordarsi di "dichiararli" =global=, altrimenti,
+   senza nessun errore o avviso, viene semplicemente creato un nome
+   locale che "maschera" quello locale!
+
+#+BEGIN_SRC python
+  def writer(items):
+      global DATA
+      for i in items:
+          DATA = i
+  
+  def reader():
+      while True:
+          i = DATA
+#+END_SRC
+
+** Sincronizzazione
+
+   Immaginiamo ora di eseguire le due funzioni.  Se le eseguo
+   "normalmente" in questo modo:
+#+BEGIN_SRC python
+  writer(items)
+  reader()
+#+END_SRC
+   non ottengo il risultato voluto, perché eseguo prima writer, che
+   associa uno dopo l'altro tutti i numeri a =DATA=, e poi eseguo
+   reader che continuerà a leggere sempre l'ultimo dato.  
+
+   Dovrò quindi eseguirle in "parallelo".  Anche se non sappiamo
+   ancora "come", è chiaro che comunque la cosa non funziona, perché
+   non posso controllare in che ordine vengono eseguite le istruzioni
+   delle due funzioni, mentre è ovvio che scrittura e lettura devono
+   alternarsi.  Mi serve quindi un sistema per sincronizzare i due
+   processi.
+
+*** Fermate e partenze con i semafori
+
+    Vediamo quindi quali sono in pratica i vincoli che devo
+    rispettare: il reader non può leggere prima che il writer abbia
+    scritto, e il writer non può (ri)scrivere prima che il reader
+    abbia letto.  Visto in un altro modo, il writer deve attendere che
+    la variabile globale sia "vuota", e il reader deve attendere che
+    sia "piena"; mi serve quindi un meccanismo per mettere in attesa
+    (wait) per un certo valore di una "condizione" per poi farlo
+    ripartire quanto questa condizione cambia.  D'altra parte chi è in
+    posizione migliore per sapere quando la variabile è "piena" se non
+    il writer e chi sa che è stata appena "svuotata" se non il reader?
+    Mi serve quindi un altro meccanismo che permetta ad un processo di
+    segnalare (signal) all'altro che può continuare.
+
+    Il meccanismo più semplice è quello dei semafori.  I semafori sono
+    oggetti gestiti dal sistema operativo a cui sono associate due
+    operazioni chiamate con nomi vari a seconda dei gusti e dei
+    contesti.  Per capire queste due operazioni si può pensare ad un
+    semaforo come una variabile intera che può essere incrementata con
+    la funzione signal (o release o up, a seconda dei gusti e dei
+    contesti) e decrementata con la funzione wait (o acquire o down).
+    La particolarità sta nel fatto che questa variabile non può mai
+    diventare negativa e quindi una wait su un semaforo già a zero è
+    bloccante, ed il processo chiamante viene sospeso e la sua
+    esecuzione riprenderà solo quando, in conseguenza di chiamate a
+    signal (che possono essere ovviamente fatte solo da un altro
+    processo), il semaforo ritornerà positivo.
+
+    In questo caso ho bisogno di due semafori, uno che chiamo
+    =SEM_EMPTY= su cui resta in attesa il writer e uno che chiamo
+    =SEM_FULL= su cui resta in attesa il reader.  Il codice diventa
+    quindi qualcosa del tipo:
+#+BEGIN_SRC python
+  def writer(items):
+      global DATA
+      for i in items:
+          wait(SEM_EMPTY)
+          DATA = i
+          signal(SEM_FULL)
+  
+  def reader():
+      while True:
+          wait(SEM_FULL)
+          i = DATA
+          signal(SEM_EMPTY)
+#+END_SRC
+
+    I semafori, in Python, sono implementati con una classe
+    =Semaphore= del modulo =threading= le due operazioni sono
+    implementate dai due metodi =acquire= e =release=.  I preferisco
+    però usare delle funzioni che operano su variabili globali e
+    definisco quindi due funzioni che mascherano l'implementazione
+    Python. Notare che siccome all'inizio la variabile =DATA= è
+    "vuota" e quindi il writer deve poter partire subito mentre il
+    reader deve aspettare, il semaforo =SEM_EMPTY= deve avere come
+    valore iniziale uno, mentre =SEM_FULL= deve partire da zero.
+#+BEGIN_SRC python
+  import threading
+  SEM_EMPTY = threading.Semaphore(1)
+  SEM_FULL = threading.Semaphore(0)
+  
+  def wait(sem):
+      sem.acquire()
+  
+  def signal(sem):
+      sem.release()
+#+END_SRC
+
+** Il programma principale
+
+   Anche se siamo ancora lontani dal traguardo di un programma
+   completo e funzionante, possiamo già preoccuparci di come
+   eseguirlo.  
+
+   Prima di tutto ricordo che un file sorgente Python, sia che sia
+   importato (come modulo/libreria) sia che sia eseguito (come
+   programma), genera sempre, al momento del caricamento un "modulo".
+   Per poterlo usare, com'è prassi comune, nelle due modalità si usa
+   il solito "trucco" (che vedremo).
+
+   È poi buona prassi cercare di "standardizzare" la parte "programma"
+   definendo sempre una funzione =main= che accetta come argomenti
+   quelli della linea di comando.  
+#+BEGIN_SRC python
+  def main(args):
+      pass
+  
+  if __name__ == '__main__':
+  
+      import sys
+      args = sys.argv[1:]
+      status = main(args)
+      sys.exit(status)
+#+END_SRC
+
+   In questo modo semplifico la parte "programma eseguibile" e rendo
+   disponibile la stessa identica funzionalità sia come "programma
+   eseguibile" che come "funzione di libreria".  Come "programma":
+#+BEGIN_SRC sh
+$ python read_write.py 1 4 3 2 6
+#+END_SRC
+   come libreria:
+#+BEGIN_SRC python
+import read_write
+read_write.main([1, 4, 3, 2, 6]
+#+END_SRC
+
+   Se poi, invece di usare un editor per scrivere il programma e una
+   shell per eseguirlo, si sta usando un IDE come IDLE da cui è
+   "scomodo" passare degli argomenti all'interprete posso sempre,
+   temporaneamente, modificare il mio programma in modo che, in
+   assenza di argomenti, usi una lista di numeri predeterminata:
+#+BEGIN_SRC python
+  def main(args):
+      pass
+  
+  if __name__ == '__main__':
+  
+      import sys
+      args = sys.argv[1:]
+      if not args:
+          args = [1, 4, 3, 2, 6]
+      main(args)
+#+END_SRC
+
+** Producer e consumer
+
+   Abbiamo quindi scritto le funzioni di scrittura e lettura dei dati,
+   comprensive della parte di sincronizzazione.  In realtà però stiamo
+   ignorando la parte di produzione e "consumo" (uso) dei dati
+   scambiati, che non si interessa della sincronizzazione ma che
+   determina i tempi di elaborazione e quindi l'evoluzione
+   dell'esecuzione del nostro programma.  Ricordo che abbiamo deciso
+   che i dati del programma non sono altro che i tempi di produzione e
+   di consumo dei vari item, con la premessa che i tempi di produzione
+   e consumo si un singolo item sono uguali tra loro, ma che
+   differiscono da un item all'altro.
+
+   Posso scrivere quindi due funzioni banali che simulano il "lavoro"
+   con una semplice attesa la cui durata è data proprio dal valore
+   dell'item scambiato.
+#+BEGIN_SRC python
+  import time
+  def make_item(item):
+      time.sleep(item)
+      return item
+  
+  def use_item(item):
+      time.sleep(item)
+      
+#+END_SRC
+
+   Adesso devo modificare reader e writer affinché usino queste due
+   funzioni:
+#+BEGIN_SRC python
+  def writer(items):
+      global DATA
+      for i in items:
+          wait(SEM_EMPTY)
+          DATA = make_item(i)
+          signal(SEM_FULL)
+  
+  def reader():
+      while True:
+          wait(SEM_FULL)
+          use_item(DATA)
+          signal(SEM_EMPTY)
+#+END_SRC
+
+** Sincronizzazione della "stampa"
+
+   Il programma dovrebbe ora essere completo e corretto, ma se lo
+   eseguo non ottengo nessun risultato e non so nemmeno "cosa è
+   successo", ma posso sempre aggiungere un po' di =print= in
+   =make_item= e in =use_item=.
+
+   C'è però un problema: queste =print= verranno chiamate da due
+   processi concorrenti che stanno quindi usando una risorsa condivisa
+   (l'output); devo quindi sincronizzare anche queste operazioni e per
+   farlo userò ancora i semafori.  In questo caso però i due processi
+   non si devono alternare, devono solo evitare di "pestarsi i piedi".
+   Mi basta quindi un solo semaforo =SEM_SHOW= inizialmente "verde".
+   In questo caso il semaforo indica l'acquisizione ed il rilascio di
+   una risorsa più che una sincronizzazione tra processi, quindi forse
+   i nomi più appropriati per le due operazioni sono =acquire= e
+   =release= per cui, visto che non costa nulla, creo due alias.
+
+   C'è anche un altro problema: lo standard output (su cui scrive
+   print) è bufferizzato e quindi gli output dei due processi
+   potrebbero ancora mescolarsi.  Ci sono due soluzioni: fare in modo
+   che lo standard output non sia bufferizzato (si può fare ma io non
+   mi ricordo mai come si fa) o usare lo standard error (che per
+   difetto non è bufferizzato!).  Scelgo la seconda soluzione, ma
+   metto comunque tutto in una funzione =show=, così posso cambiare
+   implementazione quando voglio.  Notare che =print= aggiunge
+   automaticamente un carattere di newline ma write no, quindi devo
+   aggiungerlo io esplicitamente e notare anche che la chiamata a
+   =str= su item non è strettamente necessaria perché gli item sono
+   (al momento) dei numeri, ma in questo modo mi garantisco la
+   correttezza del codice per qualsiasi altro tipo di dato, come per
+   esempio una lista.
+
+#+BEGIN_SRC python
+  import sys
+  SEM_SHOW = thread.Semaphore(1)
+  acquire = wait
+  release = signal
+
+  def show(string):
+      acquire(SEM_SHOW)
+      sys.stderr.write(string + "\n")
+      release(SEM_SHOW)
+      
+  def make_item(item):
+      show("prod: %s" % str(item))
+      time.sleep(item)
+      return item
+    
+  def use_item(item):
+      show("use:  %s" % str(item))
+      time.sleep(item)
+#+END_SRC
+
+** Esecuzione
+
+   Si tratta ora di eseguire veramente i programma.  I thread, in
+   Python, sono implementati dalla classe =Thread= del modulo
+   =threading=.  Gli argomenti principali del costruttore sono la
+   funzione da eseguire (il =target=) e i suoi argomenti (=args=).
+   Una volta creato, un =thread= viene eseguito con il metodo =start=
+   e se ne può attendere la terminazione con il metodo =join=.  Il
+   programma principale diventa quindi:
+#+BEGIN_SRC python
+def main(args):
+
+    rt = threading.Thread(
+        target=reader, args=())
+
+    wt = threading.Thread(
+        target=writer, args=(args, ))
+
+    rt.start()
+    wt.start()
+    rt.join()
+    wt.join()
+#+END_SRC
+
+** Terminazione
+
+   Siamo quasi arrivati, ma manca un "dettaglio"; il programma non
+   termina, perché reader non esce mai dal while; serve un sistema per
+   "avvertire" reader che non ci sono più dati da leggere.  Ovviamente
+   è writer che deve segnalare la fine dei dati, ma c'è un grosso
+   problema: quando writer finisce, molto probabilmente reader è
+   bloccato sulla wait e quindi non fare "controllare" nessuna
+   variabile globale né "rispondere" ad alcuna chiamata.  Un sistema
+   molto generale per segnalare "fine dei dati" è inserire come ultimo
+   dato un valore speciale che non sia tra i valori "permessi" per i
+   dati.  Una soluzione possibile è quindi la seguente:
+#+BEGIN_SRC python
+def writer(items):
+    global DATA
+    for i in items:
+        wait(SEM_EMPTY)
+        DATA = make_item(i)
+        signal(SEM_FULL)
+    wait(SEM_EMPTY)
+    DATA = None
+    signal(SEM_FULL)
+    
+def reader():
+    while True:
+        wait(SEM_FULL)
+        item = DATA
+        if item == None:
+            return 
+        use_item(item)
+        signal(SEM_EMPTY)
+#+END_SRC
+
+** Send e receive
+
+   Volendo astrarre un po' la comunicazione tra i processi potrei
+   introdurre altre due funzioni (=send= e =receive=) che si occupano
+   dell'invio e della ricezione dei dati, al di là della
+   sincronizzazione, della produzione e del consumo.  Ciò richiede
+   ovviamente di modificare anche =writer= e =reader= e il tutto
+   diventerebbe:
+#+BEGIN_SRC python
+  def send(item):
+      global DATA
+      wait(SEM_EMPTY)
+      DATA = item
+      signal(SEM_FULL)
+  
+  def writer(items):
+      for i in items:
+          item = make_item(i)
+          send(item)
+      send(None)
+  
+  def receive():
+      wait(SEM_FULL)
+      item = DATA
+      signal(SEM_EMPTY)
+      return item
+  
+  def reader():
+      while True:
+          item = receive()
+          if item == None:
+              return
+          use_item(item) 
+#+END_SRC
+
+
+
+
+

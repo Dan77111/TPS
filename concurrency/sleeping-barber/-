@@ -1,0 +1,12 @@
+INFO:root:Starting program: 3 customers, 10 chairs!
+DEBUG:root:customer 0 enters and sits on chair 1
+DEBUG:root:barber: serving 0, 2 to come, 0 waiting
+DEBUG:root:customer 0 wait time 0.00
+DEBUG:root:customer 1 enters and sits on chair 1
+DEBUG:root:customer 2 enters and sits on chair 2
+DEBUG:root:barber: serving 1, 0 to come, 1 waiting
+DEBUG:root:customer 1 wait time 0.75
+DEBUG:root:barber: serving 2, 0 to come, 0 waiting
+DEBUG:root:customer 2 wait time 1.64
+DEBUG:root:Total cut time: 2.35
+DEBUG:root:Clients served: 3

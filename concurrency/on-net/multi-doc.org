@@ -1,0 +1,109 @@
+* Introduzione
+
+  Appunti su una implementazione dell'esempio di fattorizzazione più o
+  meno distribuita che utilizza la classe Queue del modulo omonimo e
+  la classe SyncManager del modulo multiprocessing.
+
+  Nei vari esercizi relativi alla programmazione concorrente ci si
+  trova di fronte a due modi diversi di parallelizzazione: l'uso di
+  più thread su una singola macchina o l'uso di più processi sulla
+  stessa macchina o su macchine diverse.
+
+  Nel caso dei thread, ad esempio nel problema dei reader e writer, si
+  può usare un oggetto condiviso (es: una lista) con il vantaggio di
+  un accesso comodo ma con il problema della sincronizzazione, risolto
+  di solito con semafori e al costo di un incremento della complessità
+  del codice.
+
+  Nel caso dei processi distribuiti, ad esempio quella della
+  fattorizzazione, non ci sono grossi problemi di sincronizzazione, ma
+  in compenso ci sono quelli di serializzazione dei dati.
+
+  Sarebbe quindi bello poter unire la comodità delle code
+  sincronizzate con i vantaggi del multiprocessing.  Ciò si può
+  ottenere mediante dei proxy che vengono usati come se fossero
+  oggetti condivisi ma che nascondo in realtà un meccanismo di
+  distribuzione dei dati tra processi differenti.
+
+  La libreria multiprocessing di Python offre per questo degli oggetti
+  SyncManager.
+
+  Vediamo ora le varie funzioni e classi una per una.
+
+** factorize_naive
+
+   factorize_naive è una funzione che accetta un numero e restituisce
+   la lista dei suoi fattori, si occupa quindi della sola parte
+   matematica. Nulla di interessante per la parte "programmazione".
+
+** factorizer_worker
+
+   factorizer_worker legge una lista di numeri da una coda job_q, usa
+   factorize_naive per ottenere i fattori di ciascun numero e poi
+   mette tutto in un dizionario che scrive in un'altra coda res_q.
+   Svolge quindi due compiti: fan out e fan in della fattorizzazione
+   ed utilizzo di code per leggere i dati in ingresso e scrivere
+   quelli in uscita.
+
+** mp_factorizer
+
+   mp_factorizer genera un certo numero di processi che eseguono tutti
+   factorizer_worker sulla stessa coppia di code job_q e res_q.  Con
+   queste tre funzioni dovrei essere già in grado di gestire un
+   calcolo multiprocessing su una singola macchina usando due code
+   "locali" e senza problemi di sincronizzazione.
+
+** SyncManager
+
+   Gli oggetti SyncManager funzionano come dei proxy di rete che
+   permettono, definendo e registrando delle apposite funzioni, di
+   accedere a delle risorse condivise (nel nostro caso le due code).
+
+** make_server_manager
+
+   make_server_manager definisce una sottoclasse JobQueueManager di
+   SyncManager su cui vengono "registrate" due funzioni get_job_q e
+   get_res_q che permettono di accedere a due oggetti Queue.Queue
+   creati localmente. make_server_manager restituisce poi un'istanza
+   di questa classe che "ascolta" su una certa porta TCP (es: 5000) e
+   deve essere "selezionata" con una certa chiave (es: la stringa
+   "foo").
+
+** runserver
+
+   runserver usa make_server_manager per creare ed avviare (con il
+   relativo metodo start) un JobQueueManager da cui ottiene (via
+   get_job_q e get_res_q) le due code su cui scrive i blocchi di
+   numeri da fattorizzare e da cui legge i risultati che poi accumula
+   e stampa.
+
+** make_client_manager
+
+   make_client_manager è molto simile a make_server_manager. Definisce
+   una sottoclasse ServerQueueManager di SyncManager, "registra" due
+   funzioni con gli stessi nomi (XXX) e restituisce poi un'istanza di
+   questa classe che "si connette" ad un JobQueueManager ad un dato
+   indirizzo IP, data porta TCP e data chiave.
+
+** runclient
+
+   runclient usa make_client_manager per creare un ServerQueueManager,
+   farsi dare le due code (con le due solite funzioni) e passarle a
+   mp_factorizer.
+
+** main
+
+   Il programma principale deve gestire le varie opzioni che sono:
+
+   1) -s o -c per decidere se eseguire un server o un client;
+   2) -i per l'indirizzo IP del server (per i client);
+   4) -b per il numero più piccolo da fattorizzare;
+   5) -n per il numero di numeri da fattorizzare;
+   6) -p per il numero di processi da lanciare su ciascun client.
+
+   
+
+
+
+
+   

@@ -1,0 +1,293 @@
+* export headers                                                   :noexport:
+#+TITLE: Multiple readers and writers with circular buffer.
+#+DATE:  Ottobre 2015
+#+AUTHOR: Luca Manini \footnote{Copyright 2015 Luca Manini - Licenza CC by-nc-sa}
+#+EMAIL: prof.manini@gmail.com
+#+OPTIONS: ':nil *:t -:nil ::t <:t H:3 \n:nil ^:nil arch:headline
+#+OPTIONS: author:t c:nil creator:comment d:(not "LOGBOOK") date:t
+#+OPTIONS: e:t email:nil f:t inline:t num:t p:nil pri:nil stat:t
+#+OPTIONS: tex:t toc:nil  |:t
+#+CREATOR: Emacs 24.3.1 (Org mode 8.2.4)
+#+DESCRIPTION:
+#+EXCLUDE_TAGS: noexport
+#+KEYWORDS:
+#+LANGUAGE: it
+#+SELECT_TAGS: export
+
+#+LATEX_CLASS: article
+#+LATEX_CLASS_OPTIONS: 
+#+LATEX_HEADER:
+#+LATEX_HEADER_EXTRA:
+
+#+LATEX_HEADER: \include{common-def}
+#+LATEX_HEADER: \include{common-packages}
+#+LATEX_HEADER: \include{common-pdf-setup}
+#+LATEX_HEADER: \pagestyle{fancy}
+
+#+LATEX_CLASS_OPTIONS: [a4paper]
+#+LATEX_HEADER: \usepackage{minted}
+
+# Lezione su producer/consumer, reader e writer
+
+* Introduzione
+
+  Queste note descrivono un possibile sviluppo di una soluzione per il
+  problema readers/writers con multipli lettori e multipli scrittori
+  che usano un buffer condiviso e di grandezza limitata.  Il
+  prerequisito è aver già visto e capito il caso con un solo
+  scrittore, un solo lettore e un "buffer" con un solo elemento.
+
+* Elementi di base già noti
+
+  Nel problema più semplice (singoli scrittori e lettori, "buffer" con
+  un solo elemento) gli elementi principali (e che in parte riciclo)
+  erano i seguenti.
+
+** Dati
+   
+   Nel problema semplice avevo usato molte variabili globali, in
+   questa implementazione cercherò di usarne meno, per cui le funzioni
+   avranno in generale più parametri.  I dati globali più importanti
+   erano: 
+   1. SEM_FULL:
+   2. SEM_EMPTY:
+   3. SEM_SHOW
+   4. DATA:
+      
+** Funzioni 
+
+   Nel problema più semplice avevo definito le seguenti funzioni:
+   1. reader: con il ciclo delle letture,
+   2. writer: con il ciclo delle scritture,
+   3. make\_item: con il ritardo di produzione,
+   4. use\_item: con il ritardo di consumo,
+   5. show: per il log di messaggi (sincronizzato).
+
+
+
+* Elementi nuovi
+
+** Il buffer
+
+   Un buffer è un contenitore di dati in cui un processo (se sono
+   tanti non cambia nulla) scrittore "parcheggiano" dei dati in attesa
+   che un altro processo (o più processi) lettori li leggano (e li
+   elimino).  In assenza di buffer i due processi sono condannati ad
+   alternarsi perdendo tempo in attesa che l'altro faccia la sua
+   parte.  Un buffer offre invece un grado di flessibilità: lo
+   scrittore si può "portare avanti" con il lavoro, e l'unico vincolo
+   che rimane è che non si può leggere qualcosa che non è ancora stato
+   scritto.  Ovviamente il vantaggio è tanto maggiore quanto più
+   grande è il buffer, ossia di quanto lo scrittore si può portare
+   avanti.  Un buffer infinito sarebbe ottimo, ma in realtà ci si deve
+   sempre accontentare di un buffer finito, che può essere però
+   riempito dallo scrittore a mano a mano che viene svuotato dal
+   lettore.
+
+** Scrittori e lettori multipli
+
+   Nel caso più semplice dovevo sincronizzare solo il singolo
+   scrittore con il singolo lettore, mentre adesso devo sincronizzare
+   gli scrittori tra di loro, i lettori tra di loro (in modo analogo),
+   e i lettori con gli scrittori (non come prima perché il buffer è
+   diverso!).
+
+* Implementazione
+
+  Vediamo adesso come si può cominciare ad implementare il tutto, in
+  modo progressivo e superando la sindrome da pagina bianca!  Il
+  programma contiene tre tipi dai dati/funzioni relativi a tre
+  attività diverse:
+  1. il lavoro vero
+  2. la sincronizzazione
+  3. il logging
+  Il sistema migliore per non bloccarsi è cominciare dal punto 1
+  fregandosene della sincronizzazione, che introdurrò un po' alla
+  volta.  Il logging "vero" (quello per capire alla fine cosa succede
+  nei vari scenari) posso aggiungerlo tutto alla fine oppure
+  gradualmente se mi serve anche come "debugging" durante lo sviluppo.
+
+  All'interno di ciascuna attività devo definire sia dati (le
+  strutture dati) sia le funzionalità.  In generale è più facile
+  pensare prima a "quali sono" i dati, non fosse altro perché
+  altrimenti non ho i "nomi" da usare nelle funzioni.  La decisione
+  del "tipo" da usare per i dati può cambiare a seconda della
+  convenienza nell'implementazione delle funzionalità.  Ricordarsi
+  sempre che la scelta delle strutture dati è la cosa più importante
+  perché da questa dipendono la comprensibilità del codice e spesso la
+  semplicità della soluzione.
+
+** Il buffer
+   
+   Per implementare il buffer decido di usare una lista, che userò
+   fondamentalmente come se fosse un vettore.  Decido anche di
+   assegnare alla lista il nome globale =BUFFER= con valore iniziale
+   =None=; ad un certo punto, nella funzione principale =main= verrà
+   creata la lista di una lunghezza =buffer_size= che sarà un
+   parametro del =main= proveniente da un argomento della linea di
+   comando.  
+#+BEGIN_SRC python
+  BUFFER = None
+  
+  def main(buffer_size):
+      global BUFFER
+      BUFFER = [] * buffer    # o qualcosa di simile
+#+END_SRC
+
+** Le posizioni "correnti" nel buffer
+
+   I processi lettori e scrittori usano ovviamente una "cella" del
+   buffer alla volta, e quindi servono due indici per identificare la
+   cella in cui verrà scritto il prossimo dato e quella da cui verrà
+   letto il prossimo dato.  Anche in questo caso, variabili globali.
+#+BEGIN_SRC python
+  WRITE_POS = 0
+  READ_POS = 0
+#+END_SRC
+
+** La funzione writer
+
+   Comincio dalla funzione =writer=, in un certo senso perché è quella
+   da cui "inizia" l'esecuzione.  La funzione deve prendere il valore
+   corrente della posizione di scrittura, utilizzarlo come indice nel
+   buffer e poi aggiornarlo.  Siccome il buffer viene usato in modo
+   "circolare", aggiornare significa incrementare e poi fare il modulo
+   con la dimensione del buffer stesso.  Posso quindi iniziare così.
+#+BEGIN_SRC python
+  def writer():
+  
+      buffer_size = len(BUFFER)
+      while 1:
+          item = make_item()
+          pos = WRITE_POS
+          BUFFER[pos] = item
+          WRITE_POS = (WRITE_POS + 1) % buffer_size
+#+END_SRC
+   È importante notare da subito che l'ordine delle quattro righe del
+   corpo del =while= non è completamente determinato ed unico, c'è
+   solo un ordinamento parziale (da capire).
+
+** Sincronizzazione tra i vari writer
+
+   La variabile globale =BUFFER= è una risorsa condivisa che verrà
+   aggiornata da più processi concorrenti, c'è quindi il solito
+   problema dell'atomicità di lettura, incremento e scrittura.  Le
+   relative righe devono costituiscono quindi una *sezione critica*
+   (/critical section/region) ossia una parte di codice che deve
+   essere eseguita da un solo processo alla volta o come si dice di
+   solito un solo processo può essere *nella* sezione critica da cui
+   *entra* ed *esce* (come in bagno!).
+
+   Questo tipo di vincolo l'abbiamo già visto nella funzione =show=
+   dove la sezione critica era la singola istruzione =print= che era
+   protetta da un apposito semaforo.  Anche questa volta uso un
+   semaforo che decido però di passare come parametro invece che
+   definire come variabile globale.
+#+BEGIN_SRC python
+  def writer(sem_pos):
+
+      global WRITE_POS
+      buffer_size = len(BUFFER)
+      while 1:
+          item = make_item()
+          acquire(sem_pos)
+          pos = WRITE_POS
+          WRITE_POS = (WRITE_POS + 1) % buffer_size
+          release(sem_pos)
+          BUFFER[pos] = item        
+#+END_SRC
+   Da notare che la variabile locale =pos= può sembrare superflua, ma
+   ci sono due ragioni per volerla utilizzare.  La prima, banale, è
+   che potrei volerla utilizzare in qualche /log/.  La seconda è che,
+   se l'operazione di "scrittura" dovesse richiedere del tempo (es:
+   trasmissione su rete) è proprio il fatto di avere una "copia
+   locale" della posizione che mi permette di rilasciare il semaforo
+   prima di scrivere (ossia il più presto possibile).
+
+   Da notare anche in questa sincronizzazione il singolo processo
+   prende (wait/acquire) e poi rilascia (signal/release) *lo stesso*
+   semaforo mentre in quella tra reader e writer ciascun processo ne
+   prendeva uno e rilasciava l'altro.
+
+** Sincronizzazione tra reader e writer
+
+   Il fatto di avere un buffer di una certa dimensione cambia il
+   meccanismo di sincronizzazione tra reader e writer.  Prima il
+   buffer poteva essere solo o vuoto o pieno, mentre adesso può essere
+   più o meno pieno e più o meno vuoto; ovvero c'è un certo numero di
+   posti pieni e vuoti.  Si potrebbe quindi pensare di avere delle
+   variabili globali che mantengono questo conteggio e proteggerle
+   ovviamente con dei semafori.  In realtà i semafori sono già dei
+   contatori e quindi posso usare un semaforo =sem\full= inizialmente
+   a zero e un semaforo =sem\_empty= con valore iniziale pari alla
+   dimensione del buffer!  Anche per questi due semafori decido di
+   passarli come parametri per cui cambio =writer= come segue (come
+   sempre l'ordine esatto delle righe del corpo del =while= andrà
+   forse modificato, ma intanto sono andato avanti!).
+#+BEGIN_SRC python
+  def writer(id, sem_empty, sem_full, sem_pos):
+  
+      global WRITE_POS
+      buffer_size = len(BUFFER)
+      while 1:
+          item = make_item()
+          wait(sem_empty)
+          acquire(sem_pos)
+          pos = WRITE_POS
+          WRITE_POS = (WRITE_POS + 1) % buffer_size
+          release(sem_pos)
+          BUFFER[pos] = item
+          signal(sem_full)
+#+END_SRC
+
+   Il =main= deve ora preoccuparsi di creare i semafori e i /thread/
+   (almeno per la parte writer).  Il numero di writer è ovviamente un
+   parametro del programma. Già che ci sono, nel ciclo di creazione,
+   assegno un =id= a ciascun /thread/ e lo passo pure come argomento
+   (non proprio necessario ma vabbè).
+#+BEGIN_SRC python
+  def main(buffer_size, writers_count):
+      
+      global BUFFER
+      BUFFER = [] * buffer    # o qualcosa di simile
+  
+      sem_empty = threading.Semaphore(buffer_size)
+      sem_full = threading.Semaphore(0)
+      sem_writer = threading.Semaphore(1)
+      
+      rr = [threading.Thread(id, target=writer,
+              args=(id, sem_empty, sem_full, sem_writer))
+              for id in range(readers_count)]
+#+END_SRC
+
+** Numero degli item e ciclo del writer
+
+   Resta ora da decidere come e quando far terminare il ciclo dei
+   writer (ed poi dei reader).  Intanto scelgo di fissare, come
+   parametro del programma, il numero totale di item da scrivere
+   (=items\_count=).  Devo poi decidere come distribuire il lavoro tra
+   i vari writer.  Darne un certo numero a ciascun mi pare troppo
+   banale, meglio che ognuno continui a prenderne un altro "finché ce
+   n'è"; quindi altra variabile globale ma non un altro semaforo
+   perché riciclo =sem\_pos=.
+#+BEGIN_SRC python
+  WRITE_LEFT = 0
+  
+  def writer(id, sem_empty, sem_full, sem_pos):
+    
+      global WRITE_POS
+      global WRITE_LEFT
+          
+      buffer_size = len(BUFFER)
+      while WRITE_LEFT:
+          wait(sem_empty)
+          acquire(sem_pos)
+          item = make_item()
+          pos = WRITE_POS
+          WRITE_POS = (WRITE_POS + 1) % buffer_size
+          WRITE_LEFT -= 1
+          release(sem_pos)
+          BUFFER[pos] = item
+          signal(sem_full)
+#+END_SRC
+

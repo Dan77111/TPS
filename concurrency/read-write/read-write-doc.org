@@ -1,0 +1,181 @@
+* export headers                                                   :noexport:
+#+TITLE: Readers and writers: \\ esempio di programmazione concorrente
+#+DATE:  2014
+#+AUTHOR: Luca Manini \footnote{Copyright 2014 Luca Manini - Licenza CC by-nc-sa}
+#+EMAIL: prof.manini@gmail.com
+#+OPTIONS: ':nil *:t -:t ::t <:t H:3 \n:nil ^:t arch:headline
+#+OPTIONS: author:t c:nil creator:comment d:(not "LOGBOOK") date:t
+#+OPTIONS: e:t email:nil f:t inline:t num:t p:nil pri:nil stat:t
+#+OPTIONS: tex:t toc:nil  |:t
+#+CREATOR: Emacs 24.3.1 (Org mode 8.2.4)
+#+DESCRIPTION:
+#+EXCLUDE_TAGS: noexport
+#+KEYWORDS:
+#+LANGUAGE: en
+#+SELECT_TAGS: export
+
+#+LATEX_CLASS: article
+#+LATEX_CLASS_OPTIONS: 
+#+LATEX_HEADER:
+#+LATEX_HEADER_EXTRA:
+
+#+LATEX_HEADER: \include{common-defs}
+#+LATEX_HEADER: \include{common-packages}
+#+LATEX_HEADER: \include{common-pdf-setup}
+#+LATEX_HEADER: \pagestyle{fancy}
+
+* Introduzione 
+
+  Classico esempio di programmazione concorrente: lettori e scrittori
+  (o produttori e consumatori) su un buffer circolare di lunghezza
+  finita.  Implementazione in =Python=.
+
+  L'idea di fondo è che ci sono due processi (o thread), uno scrive
+  (produce) dei dati e l'altro li legge, quindi c'è una condivisione
+  sulla memoria in cui il dato viene scritto.  Se la memoria può
+  contenere un solo dato, allora l'unica soluzione è alternare una
+  scrittura con una lettura e il tutto diventa molto semplice.  È però
+  in genere conveniente permettere una certa "elasticità" per
+  permettere allo scrittore di produrre e scrivere più dati, mentre il
+  lettore sta leggendo e consumando i dati fin qui prodotti; in questo
+  modo ciascuno può andare "alla sua velocità".  Ciò richiede però un
+  certo spazio di memoria (/buffer/) in cui memorizzare i dati già
+  prodotti e non ancora consumati.  Questo spazio sarà di dimensione
+  finita, ma è evidente che quando un dato è stato letto il suo posto
+  può essere "riciclato".  Per fare ciò si usa di solito un buffer
+  "circolare", implementato di solito con un vettore (una lista in
+  =Python=) in cui l'indice viene incrementato "finché si può" e poi
+  resettato a zero.  Scrittore e lettore si "inseguono" in questo
+  buffer e si deve evitare che il letto cerchi di leggere in posizioni
+  "ancora vuote" o che lo scrittore cerchi di (sovra)scrivere in
+  posizioni non ancora lette. 
+
+* Sincronizzazione
+
+  Per sincronizzare lettore e scrittore si usano due semafori:
+  =sem_empty= e =sem_full=. Il primo indica il numero di "celle"
+  libere, è inizializzato al numero totale di celle disponibili nel
+  /buffer/ e viene incrementato ad ogni lettura e decrementato ad ogni
+  scrittura; il secondo indica il numero delle celle occupate e viene
+  incrementato ad ogni scrittura e decrementato ad ogni lettura.
+  Anche se a prima vista sembra strano, ciò è sufficiente a risolvere
+  il problema.
+
+* Il codice
+
+  Vediamo ora il codice, partendo dal "programma principale" e
+  scendendo a poco a poco nei dettagli.
+
+** =main=
+
+   La funzione =main= è relativamente semplice.  I due parametri sono
+   il numero totale di dati da scrivere/leggere ed la dimensione del
+   buffer.  =main= crea il buffer e i due semafori.  Quindi crea i due
+   /thread/ che eseguono le due funzioni =reader= e =writer= a cui
+   vengono passati alcuni parametri abbastanza ovvi.  Per finire
+   esegue i due /thread/ e attende che finisca la loro esecuzione.
+#+BEGIN_SRC python
+def main(item_count, buffer_size):
+
+    buffer = [-1] * buffer_size
+    sem_empty = threading.Semaphore(buffer_size)
+    sem_full = threading.Semaphore(0)
+
+    rt = threading.Thread(
+        target=reader,
+        args=(item_count, buffer, sem_empty, sem_full))
+    wt = threading.Thread(
+        target=writer,
+        args= (item_count, buffer, sem_empty, sem_full))
+
+    rt.start()
+    wt.start()
+    rt.join()
+    wt.join()
+#+END_SRC
+
+** =writer=
+
+   La funzione =writer= è molto semplice: ripete per un certo numero
+   di volte (=item_count=) la creazione di un dato e la sua scrittura
+   in una delle celle del /buffer/.  La posizione in cui scrivere
+   parte da zero e viene incrementata ad ogni scrittura, resettandola
+   a zero (usando la funzione modulo =%=) quando raggiunge la
+   dimensione del /buffer/.  L'unico aspetto un po' "difficile" sono
+   le due chiamate a =down= e =full=.  La prima "cerca di
+   decrementare" =sem_empty=, questa chiamata "blocca" la funzione se
+   il semaforo è già a zero, ossia se non ci sono celle libere per
+   scrivere.  La seconda incrementa =sem_full= per annunciare che c'è
+   un altro dato disponibile, e facendo "ripartire" il lettore nel
+   caso questo fosse perché =sem_full= è pari a zero.
+   
+#+BEGIN_SRC python
+  def writer(item_count, buffer, sem_empty, sem_full):
+      size = len(buffer)
+      for i in range(item_count):
+          down(sem_empty)
+          p = i % size
+          buffer[p] = make_item()
+          up(sem_full)
+#+END_SRC
+
+** =reader=
+
+   La funzione =reader= è perfettamente simmetrica rispetto a
+   =writer=, per cui non c'è molto da dire (se si è capita =writer=!).
+
+#+BEGIN_SRC python
+def reader(item_count, buffer, sem_empty, sem_full):
+    size = len(buffer)
+    for i in range(item_count):
+        down(sem_full)
+        p = i % size
+        c = buffer[p]
+        up(sem_empty)
+        use_item(c)
+#+END_SRC
+
+** =make_item=, =use_item= e =sleep_between=
+
+   Queste due funzioni sono dei "segnaposto" per eventuali funzioni
+   "vere" che producono e consumano i dati.  Per simulare il tempo
+   necessario al lavoro vero contengono una chiamata a
+   =sleep_between=, che attende un tempo random tra i suoi due
+   argomenti.
+#+BEGIN_SRC python
+def make_item():
+    if DO_SLEEP: sleep_between(0.1, 0.25)
+    return random.randint(0,100)
+#+END_SRC
+#+BEGIN_SRC python
+def use_item(i):
+    if DO_SLEEP: sleep_between(0.0, 0.1)
+    show("%3d" % i)
+#+END_SRC
+#+BEGIN_SRC python
+def sleep_between(min, max):
+    diff = max - min
+    time.sleep(float(min))
+    time.sleep(diff * random.random())
+#+END_SRC
+
+** =down= e =up=
+
+   Queste sono le due funzioni per accedere ai semafori.  I nomi di
+   queste funzioni variano a seconda del libro che si sta leggendo,
+   del linguaggio o dalle librerie che si stanno usando, o dal
+   contesto.  /down/ e /up/ richiamano il fatto che i semafori sono
+   degli interi che vengono usati come "contatori" e quindi
+   incrementati e decrementati (senza mai diventare negativi e con
+   eventuale blocco). Gli equivalenti /acquire/ e /release/ si usano
+   quando i semafori servono per controllare l'accesso esclusivo ad
+   una risorsa condivisa che viene quindi acquisita (riservata) e
+   rilasciata.  Altra alternativa: /wait/ e /signal/ (o /wakeup/) per
+   ricordare che un tentativo di decrementare un semaforo può
+   risultare nel blocco del processo, che rimane quindi in attesa di
+   ricevere un segnale che lo risvegli.
+
+
+
+
+

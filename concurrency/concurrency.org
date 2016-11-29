@@ -1,0 +1,364 @@
+* export headers                                                   :noexport:
+#+TITLE: Concurrency: \\ esempi vari di programmazione concorrente
+#+DATE:  2014
+#+AUTHOR: Luca Manini \footnote{Copyright 2014-2015-2016 Luca Manini - Licenza CC by-nc-sa}
+#+EMAIL: prof.manini@gmail.com
+#+OPTIONS: ':nil *:t -:t ::t <:t H:3 \n:nil ^:t arch:headline
+#+OPTIONS: author:t c:nil creator:comment d:(not "LOGBOOK") date:t
+#+OPTIONS: e:t email:nil f:t inline:t num:t p:nil pri:nil stat:t
+#+OPTIONS: tex:t toc:nil  |:t
+#+CREATOR: Emacs 24.3.1 (Org mode 8.2.4)
+#+DESCRIPTION:
+#+EXCLUDE_TAGS: noexport
+#+KEYWORDS:
+#+LANGUAGE: en
+#+SELECT_TAGS: export
+
+#+LATEX_CLASS: article
+#+LATEX_CLASS_OPTIONS: 
+#+LATEX_HEADER:
+#+LATEX_HEADER_EXTRA:
+
+#+LATEX_HEADER: \include{common-def}
+#+LATEX_HEADER: \include{common-packages}
+#+LATEX_HEADER: \include{common-pdf-setup}
+#+LATEX_HEADER: \pagestyle{fancy}
+* Introduzione
+
+  Appunti per le lezioni di TPS di quarta, per la parte di programma
+  che riguarda la concorrenza.  Nel corso vedremo alcuni esempi
+  classici ed alcuni esempi più "realistici".  Siccome il corso vuole
+  essere anche molto "pratico", per ciascun esempio ci saranno più
+  implementazioni complete di argomenti della linea di comando,
+  logging e testing.  Questo file raccoglie la parte più "teorica" del
+  corso.
+
+* Algoritmi, flusso di esecuzione, concorrenza e parallelismo
+
+  Concorrenza e parallelismo sono due termini usati spesso come se
+  fossero quasi sinonimi, ma in realtà indicano due concetti molto
+  diversi, anche se in stretta relazione tra loro.
+
+  La concorrenza è un aspetto strutturale (quindi statico) di un
+  problema, o di una soluzione ad un problema, in particolare di una
+  sua soluzione algoritmica che per noi è sinonimo di "programma".  La
+  concorrenza è un modo di "decostruire" il problema (e quindi spesso
+  di "costruire" una sua soluzione) ed è anche un metodo per
+  "costruire" dei sistemi mettendo insieme più parti che possono
+  essere eseguite "indipendentemente".
+
+  Il parallelismo è un aspetto legato all'esecuzione (quindi dinamico)
+  di un algoritmo ed è legato alla possibilità di avere più esecutori
+  (e quindi più flussi di esecuzione) contemporanei.  La concorrenza è
+  un modo di "ottimizzare" l'esecuzione di una soluzione ad un dato
+  problema.  
+
+  Una soluzione concorrente può essere una "buona soluzione" anche se
+  poi non si può avere il parallelismo ma solo per la sua
+  "intelligenza" o per la sua chiarezza.  Se poi si può avere anche il
+  "parallelismo" (di cui la concorrenza è un prerequisito) allora
+  tanto meglio (di solito).
+
+  Per illustrare il concetto concorrenza è utile ricordare cos'è di
+  "controllo di flusso" (controllo del flusso di esecuzione).
+
+  Nelle parole di Bob Pike (video /Concurrency is not parallelism/) la
+  concorrenza serve a "gestire più cose nello stesso momento"
+  (/dealing with a lot o things at once/) mentre il parallelismo è
+  "fare più cose nello stesso mome" (/doing a lot of things at once/).
+
+# Tony Hoare /Communicating Sequential Processes/ (1978)
+
+
+** Algoritmo
+
+  Un algoritmo è una descrizione di una serie di operazioni che, se
+  eseguite, portano da un certo risultato.  Queste operazioni verranno
+  eseguite da un "esecutore" in un certo ordine, ci sarà quindi un
+  "flusso di esecuzione".  Tutti linguaggi di programmazione, in un
+  modo o nell'altro, forniscono delle "strutture" per specificare, nel
+  "testo" del programma (che è una struttura lineare e statica), come
+  queste istruzioni devono essere eseguite (non necessariamente
+  nell'ordine in cui compaiono nel testo). Le possibilità sono:
+  sequenza, scelta, ripetizione.
+
+  La sequenza non richiede costrutti particolare, semplicemente si
+  tratta di eseguire le varie parti del programma nell'ordine in cui
+  compaiono nel testo.  
+
+  La scelta (tipicamente espressa dalla struttura =if= nelle sue
+  varianti) permette di specificare uno o più blocchi di istruzioni
+  che non verranno eseguite tutte in sequenza ma che sono in
+  alternativa tra loro.  Alcune parti del testo non saranno quindi
+  sempre eseguite.
+
+  La ripetizione (tipicamente espressa con le strutture =for= e
+  =while= o altre simili o con la ricorsione) permette di ripetere
+  l'esecuzione di un blocco di istruzioni senza doverle ripetere nel
+  testo.  
+
+  Queste tre strutture permettono di descrivere un qualsiasi algoritmo
+  e quindi tutti i linguaggi che le contengono sono in un qualche
+  senso "equivalenti" (equipotenti).
+
+  A queste tre strutture si aggiunge di solito la possibilità di
+  definire e di eseguire delle "funzioni" (o procedure, dal punto di
+  vista del flusso di esecuzione la differenza non è significativa).
+  Definire una funzione significa in pratica "isolare" un pezzo di
+  codice e di dargli un nome (oltre al fatto di definire e nominare
+  dei parametri, ma ciò non è importante in questo contesto).  La
+  funzione può essere poi "chiamata" da un altro punto del codice (e
+  quindi in un qualsiasi momento dell'esecuzione) con l'effetto di
+  deviare il flusso di esecuzione passando ad eseguire il codice della
+  funzione per poi "tornare" al punto di deviazione.
+
+** Flusso di esecuzione
+
+   Il flusso di esecuzione è quindi il passaggio dall'esecuzione di
+   una "istruzione" a quello dell'istruzione "successiva" (l'ordine in
+   cui le istruzioni vengono eseguite), seguendo il codice e le regole
+   di "traffico" descritte prima.
+
+   Una delle qualità di un codice scritto bene è la facilità con cui
+   dalla lettura del codice si può "immaginare" (seguire nella propria
+   testa) un ipotetico flusso di esecuzione (uno dei tanti possibili a
+   seconda, ad esempio, dei dati forniti al programma o da altre
+   condizioni "esterne").  
+
+   Nella programmazione "normale" (non concorrente) il flusso di
+   esecuzione è univoco (al netto della variazione dei dati) nel senso
+   che eseguendo più volte il programma "nella stessa situazione"
+   ottengo non solo lo stesso risultato (se il programma è corretto!)
+   ma l'esecuzione si è ripetuta sempre nello stesso modo, seguendo
+   sempre lo stesso flusso.
+
+   Come vedremo ciò non è più vero nella programmazione
+   concorrente/parallela e ciò è un grosso problema in quanto rende
+   molto più difficile sia "immaginare" i vari possibili flussi di
+   esecuzione sia "controllare" il programma eseguendo delle "suite"
+   di test.
+
+** Concorrenza
+
+** Parallelismo
+* Supporto software
+
+  La maggior parte dei linguaggi (tra le eccezioni =Erlang= e =go=)
+  non offre un supporto diretto per esprimere l'eventuale struttura
+  concorrente del codice e nemmeno per gestirne l'esecuzione
+  "parallela".  Di solito tutto ciò è delegato a librerie che
+  forniscono degli strumenti (strutture dati e funzioni) per gestire i
+  vari esecutori (ticipamente funzioni eseguite in /thread/ o
+  processi) e per controllare l'accesso alle risorse condivise.
+
+** Processi
+
+   I processi sono le strutture usate dal sistema operativo per
+   gestire l'esecuzione di più programmi mettendo di volta in volta a
+   disposizione di ciascuno le risorse disponibili (CPU, memoria,
+   dispositivi di I/O etc.).
+
+   Per facilitare la programmazione e per evitare "interferenze" tra i
+   vari processi, il sistema operativo "isola" i processi l'uno
+   dall'altro in modo molto deciso: ciascun processo ha la propria
+   area di memoria per codice e dati e non può influenzare più di
+   tanto l'esecuzione degli altri processi. 
+
+   Se per ottenere il parallelismo si punta quindi sul
+   /multiprocessing/, delegando a processi diversi le varie
+   "attività", la condivisione delle informazioni, fondamentale per la
+   collaborazione, risulta piuttosto problematica.
+
+   Uno dei vantaggi del /multiprocessing/ rispetto al /multithreading/
+   e che una soluzione  /multiprocessing/ si presta molto di più alla
+   distribuzione delle attività su macchine diverse.
+
+** Thread
+
+   Anche i /thread/ sono uno strumento per l'esecuzione di programmi
+   ma diversi /thread/ possono essere eseguiti all'interno di uno
+   stesso processo potendo quindi condividere varie risorse, tra le
+   quali la memoria.  È possibile quindi utilizzare, ad esempio, delle
+   variabili "globali" visibili a tutti i /thread/.  In questo caso la
+   comunicazione tra gli esecutori delle varie attività è molto
+   facile! Anche troppo facile in realtà in quanto ci si deve occupare
+   del controllo dell'accesso condiviso ad una stessa risorsa, con i
+   relativi problemi di sincronizzazione.
+
+** Coroutine (/future/ e parenti)
+
+   Un'altra possibilità, recentemente perseguita da molti linguaggi, è
+   quella di utilizzare dei meccanismi ancora più leggeri dei /thread/
+   chiamati in modo diverso a seconda dei linguaggi e degli
+   "ambienti".  Nel passato, molti /framework/ /Python/, specialmente
+   quelli rivolti allo sviluppo di server per protocolli di rete (per
+   esempio i server /web/) hanno sviluppato varie soluzioni sfruttando
+   varie funzionalità del linguaggio tra le quali le /coroutine/ e i
+   /generatori/.  Nelle versioni più recenti di /Python/ tutti i vari
+   meccanismi sono stati "uniformati" ed è stata introdotta una
+   libreria (=asyncio=) dedicata alla gestione asincrona dell'I/O.
+
+* Meccanismi di base
+
+  I due problemi principali, fondamentalmente molto simili, che si
+  devono affrontare nello sviluppo di applicazioni concorrenti sono la
+  sincronizzazione tra i vari processi e il controllo di accesso a
+  risorse condivise.  Nel corso degli anni sono state inventate (e
+  reinventate) moltissime soluzioni che si basano su un certo numero
+  di "strumenti" (meccanismi): semafori, /lock/, code, messaggi (XXX).
+  Molti di questi meccanismi sono "equivalenti" nel senso che avendone
+  a disposizione uno (normalmente fornito dal sistema operativo), si
+  possono "costruire" gli altri.  Di tutti questi meccanismi "di
+  base", i più facili da capire sono i semafori e i /lock/ e quindi ci
+  occuperemo solo di quelli.
+
+  C'è da notare che questi meccanismi sono molto difficili da usare in
+  modo corretto per cui vengono usati in realtà solo nella scrittura
+  dei sistemi operativi.  Nello sviluppo di applicazioni è molto
+  meglio usare meccanismi di livello più alto come le code e i
+  messaggi.  Ciò nonostante fare un po' di esercizio con semafori e
+  /lock/ non può che fare bene!
+
+** Semafori
+   
+   Un semaforo può essere visto come una variabile intera con le
+   seguenti caratteristiche particolari:
+
+   1. ha sempre un valore non negativo;
+   2. non è possibile conoscerne il valore;
+   3. è possibile incrementarne il valore (di una unità) usando una
+      funzione, chiamata a seconda dei casi (/signal/, /release/,
+      /up/), questa funzione "ritorna" sempre istantaneamente;
+   4. è possibile "provare" a decrementarne il valore (di una unità)
+      usando una funzione chiamata a seconda dei casi (/wait/,
+      /acquire/, /down/); siccome la variabile non può mai assumere un
+      valore negativo, se la variabile vale già zero queste funzioni
+      "bloccano" l'esecuzione fintanto che un altro /thread/ non
+      incrementa la variabile rendendone quindi possibile il
+      decremento.
+
+  I semafori sono quindi come dei contatori con la caratteristica che
+  le due funzioni di accesso, che prevedono un controllo e una
+  modifica, sono "atomiche".
+
+** Lock
+
+   I /lock/ sono molto simili ai semafori con la differenza che hanno
+   solo due valori possibili.  Il loro scopo è di controllare che un
+   solo /thread/ acceda abbia accesso in un dato momento ad una
+   risorsa.
+
+** Code (/queue/)
+** Messaggi
+
+* Esempi
+
+** basic fork/exa (C e Python)
+
+   Semplici esempi di fork:
+
+   1) fork di un singolo processo senza attesa del figlio da parte del
+      padre: codice in [[file:basic-fork-exa/1-single-fork-and-print.py][python]] e in [[file:basic-fork-exa/1-single-fork-and-print.c][C]] e documentazione in [[file:basic-fork-exa/1-single-fork-and-print.pdf][pdf]].
+   2) fork di più processi, anche qui senza attesa del  figlio: codice
+      in [[file:basic-fork-exa/2-multiple-fork-and-print.c][C]] e documentazione in [[file:basic-fork-exa/2-multiple-fork-and-print.pdf][pdf]].
+   3) fork di più processi, questa volta con attesa dei figli: codice
+      in [[file:basic-fork-exa/3-single-fork-with-wait-and-print.c][C]] e documentazione in [[file:basic-fork-exa/3-single-fork-with-wait-and-print.pdf][pdf]].
+   4) fork di un singolo processo con attesa del figlio e ritardi
+      personalizzabili sui vari processi per vedere la creazione di
+      zombie: codice in [[file:basic-fork-exa/4-multiple-fork-with-late-wait-and-print.py][Python]] e in [[file:basic-fork-exa/4-multiple-fork-with-late-wait-and-print.c][C]] e documentazione in [[file:basic-fork-exa/4-multiple-fork-with-late-wait-and-print.pdf][pdf]].
+
+** char-count (C e Python)
+
+   Conteggio caratteri di più file implementato in vari modi: 
+
+   1) in C con processo [[file:char-count/char_count_driver.c][singolo]] usando una funzione [[file:char-count/char_count.c][esterna]],
+   2) in [[file:char-count/char_count.py][Python]] con fork di una funzione e comunicazione via pipe;
+   3) in C con fork di [[file:char-count/counter-fork-fun.c][più processi]];
+   4) nello stesso modo ma con le /wait/ [[file:char-count/counter-late-wait.c][tutte alla fine]];
+   5) in C con i [[file:char-count/counter-thread.c][/thread/]] usando la libreria /pthread/.
+
+** Dining philosophers
+
+   Classico problema del "filosofi a cena".  Soluzione in [[file:dining-philosophers/dining-philosophers_ast.c][C]] "à la
+   Tanenbaum" e poi anche in [[file:dining-philosophers/dining-philosophers.py][Python]]. Documentazione [[file:dining-philosophers/dining-philosophers-doc.org][qui]].
+
+** Sleeping barber
+
+   Classico problema del "barbiere che dorme" (/sleeping barber/).
+   Soluzione in [[file:sleeping-barber/sleeping-barber_ast.c][C]] "à la Tanenbaum" e poi anche in [[file:sleeping-barber/sleeping-barber.py][Python]] con uso delle
+   librerie =threading=, =logging= e =getopt=.
+   
+** read/write
+   
+   Una serie di versioni più o meno complicate del problema dei
+   /reader/ e /writer/ (o /consumer/ /producer/).  
+
+   Single reader/writer:
+
+   1) versione molto semplice in Python con [[file:read-write/read-write_single-global.py][variabili globali]] a /go-go/;
+   2) versione più completa [[file:read-write/read-write.py][con opzioni]];
+   3) versione come la precedente ma [[file:read-write/read-write_commented.py][molto commentata]];
+   4) [[file:read-write/read-write_forecast.py][interessantissima]] versione single producer single consumer senza
+      buffer (singola variabile globale) ma con la possibilità di
+      variare i "ritardi" dei due processi e stampare una tabella dei
+      tempi (istanti) di partenza, stop e wait dei due processi.
+
+   Multi reader/writer:
+
+   1) versione [[file:read-write/multi-read-write_raw.py][minimalista]] procedurale;
+   2) versione [[file:read-write/multi-read-write_proc.py][procedurale]] ma con commenti e opzioni;
+   3) versione [[file:read-write/multi-read-write_oop.py][OOP]];
+   4) versione [[file:read-write/multi-read-write_queue_proc.py][procedurale con /queue/]]:
+   5) versione [[file:read-write/multi-read-write_queue_oop.py][OOP con /queue/]];
+   6) versione minimalista in [[file:read-write/multi-read-write_c.c][C]].
+
+   Documentazione:
+
+   1) [[file:read-write/read-write-doc.org][generica]] sul problema;
+   2) specifica su come sviluppare le versioni [[file:read-write/read-write-develop-doc.org][single]] reader/writer;
+   3) specifica su come sviluppare le versioni [[file:read-write/multi-read-write-develop-doc.org][multi]] reader/writer;
+   
+** Primes
+
+   Calcolo dei numeri primi da 2 fino ad un certo massimo.  In varie 
+   versioni:
+
+   1) processo singolo (per controllo) in [[file:primes/primes_single.c][C]] e in [[file:primes/primes_single.py][Python]];
+   2) con [[file:primes/primes_single_driver.py][multiprocessing e /queue/]] in Python.
+
+** Tickets
+
+   Primo esempio (l'altro è [[Ice store)]] del mitico [[https://www.google.com/search?client=ubuntu&channel=fs&q=jeff+cain+stanford&ie=utf-8&oe=utf-8][Jeff Cain]] di
+   Stanford.  Vendita di un insieme di biglietti da parti di più
+   venditori. Il tutto in [[file:tickets/tickets.py][Python]] usando il multithreading.
+   Documentazione specifica [[file:tickets/tickets-doc.org][qui]].
+   
+** Ice store
+
+   Mega esempio di [[https://www.google.com/search?client=ubuntu&channel=fs&q=jeff+cain+stanford&ie=utf-8&oe=utf-8][Jeff Cain]]. Distribuzione di coni gelato con
+   multipli clienti, multipli camerieri, controllo dei coni uno per
+   uno e passaggio finale alla cassa.  Il tutto riscritto in Python.
+
+   Varie versioni:
+
+   1) versione [[file:ice-store/ice-store_raw.py][liscia]], più vicina possibile all'originale;
+   2) versione [[file:ice-store/ice-store.py][più ricca]], ma ancora vicina all'originale;
+   3) versione [[file:ice-store/ice-store-new.py][più pythonica]];
+
+   Documentazione specifica [[file:ice-store/ice-store-doc.org][qui]].
+
+** On-net
+
+   Esempio di calcolo distribuito, per la fattorizzazione di numeri
+   interi.  Anche questa volta molte versioni diverse:
+
+   1) solito esempio di [[file:on-net/echo.py][echo server]] (con client);
+   2) prima versione single process con le [[file:on-net/factorize.py][tre funzioni]] di
+      fattorizzazione (stupida, furba e ricorsiva);
+   3) versione [[file:on-net/single.py][locale]] ma multithreading;
+   4) come sopra ma con [[file:on-net/multi.py][code]] ([[file:on-net/multi-doc.org][doc]]);
+   5) come sopra ma con [[file:on-net/multi-syncmanager.py][/sync manager/]];
+   6) versione client/server con [[file:on-net/factorize-socket.py][socket]] un client alla volta;
+   7) come sopra ma con [[file:on-net/factorize-socket-select_multi.py][select]] e connessioni multiple.
+
+   Documentazione [[file:on-net/multi-doc.org][qui]].

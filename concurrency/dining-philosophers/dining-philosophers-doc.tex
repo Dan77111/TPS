@@ -1,0 +1,415 @@
+% Created 2016-11-06 dom 20:36
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{fixltx2e}
+\usepackage{graphicx}
+\usepackage{longtable}
+\usepackage{float}
+\usepackage{wrapfig}
+\usepackage{rotating}
+\usepackage[normalem]{ulem}
+\usepackage{amsmath}
+\usepackage{textcomp}
+\usepackage{marvosym}
+\usepackage{wasysym}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\tolerance=1000
+\include{common-def}
+\include{common-packages}
+\include{common-pdf-setup}
+\author{Luca Manini}
+\date{2014}
+\title{Filosofi a cena: esempio di programmazione concorrente}
+\hypersetup{
+  pdfkeywords={},
+  pdfsubject={},
+  pdfcreator={Emacs 24.3.1 (Org mode 8.2.4)}}
+\begin{document}
+
+\maketitle
+\section{Introduzione}
+\label{sec-1}
+
+Classico problema di concorrenza, legato alla condivisione di
+risorse e all'accesso condiviso a qualche informazione
+"aggiornabile".  Il problema è il seguente: ci sono cinque filosofi
+a cena, che passano la serata alternando momenti in cui pensano
+(\emph{think}) a momenti in cui mangiano (\emph{eat}).  Ogni filosofo ha il
+suo piatto (spaghetti), ma ci sono solo cinque forchette (ai lati
+dei piatti) e ogni filosofo ha bisogno delle due forchette al lato
+dei suo piatto per mangiare! Morale: solo due filosofi, non
+"contigui" possono mangiare contemporaneamente.
+
+La prima soluzione che viene in mente è: quando un filosofo vuole
+mangiare guarda se le due posate sono disponibili e se lo sono le
+prende e mangia per un po' (togliendo quindi ai suoi vicini la
+possibilità di mangiare) e poi posa le posate.  
+
+Il problema è che, essendo i cinque filosofi processi "paralleli",
+può succedere che tutti vedono le posate disponibili, tutti prendono
+quella alla loro sinistra e poi non possono però prendere quella a
+destra: sono tutti bloccati.  Il nocciolo del problema è che le due
+azioni di controllare la disponibilità delle due forchette e di
+prenderle devono costituire un'unica azione "atomica" (proprio nel
+senso di indivisibile) che o ha successo globalmente o fallisce
+globalmente, senza mai permettere che la prima delle due abbia
+successo e che la seconda fallisca.  La ragione fondamentale per cui
+la seconda può fallire e che tra l'esecuzione della prima e quella
+della seconda si "inserisca" un'azione di un altro filosofo; la
+soluzione sta quindi nel "sincronizzare" in modo intelligente le
+varie operazioni, limitando in un certo senso il parallelismo.
+
+\section{La soluzione classica}
+\label{sec-2}
+
+
+La soluzione classica è quella proposta da Dijstra nel 1956 e
+riportata in tutti i libri di testo, tra i quali il libro \emph{Modern
+Operating Systems} di Andrew S. Tanenbaum (AST nel seguito) da cui
+ho preso la soluzione che illustro di seguito (un po' modificata).
+
+Un esempio di "non soluzione", che non credo richieda spiegazioni, è
+il seguente:
+\begin{verbatim}
+#define N 5                 /* number of philosophers */
+void philosopher (int i) {
+
+  while (1) {
+
+    think();
+    take_fork(i);
+    take_fork((i+1) % N);
+    eat();
+    put_fork(i);
+    put_fork((i+1) % N);
+  }
+}
+\end{verbatim}
+
+Un primo miglioramento potrebbe essere quello di proteggere tutto il
+corpo del \texttt{for}, esclusa la chiamata a \texttt{think} da un semaforo, ma
+così al massimo un solo filosofo potrebbe mangiare in ogni momento,
+mentre è ovvio che con cinque forchette si potrebbe arrivare a due!
+
+La soluzione è avere:
+
+\begin{enumerate}
+\item un vettore che mantiene lo stato (\emph{thinking', /hungry} e
+\emph{eating}) di ciascun filosofo;
+\item un singolo \emph{mutex} per proteggere le \emph{critical region} in cui si
+accede al vettore stesso;
+\item un vettore di semafori su cui i filosofi possono "bloccarsi" in
+attesa della disponibilità di forchette.
+\end{enumerate}
+
+\section{L'implementazione}
+\label{sec-3}
+
+L'implementazione di AST è composta da cinque parti fondamentali:
+
+\begin{enumerate}
+\item le strutture dati;
+\item la funzione \texttt{philosopher};
+\item la funzione \texttt{take\_forks};
+\item la funzione \texttt{put\_forks};
+\item la funzione \texttt{test}.
+\end{enumerate}
+
+\subsection{Le strutture dati}
+\label{sec-3-1}
+
+Ciò che serve sono i \texttt{define} di alcune costanti e le due macro
+\texttt{LEFT} e \texttt{RIGHT} per ottenere facilemente gli indici dei due
+filosofi "vicini".  Tanenbaum usa gli interi come semafori, mentre
+io uso il tipo \texttt{sem\_t} (predefinito in \texttt{thread.h}); per questo può
+inizializzare il \emph{mutex} direttamente a 1, mentre io lo faccio nel
+\texttt{main} con la funzione \texttt{up} (\emph{alias} di \texttt{sem\_post}).
+
+\begin{verbatim}
+#define N 5
+#define LEFT  (i-1) % N
+#define RIGHT (i+1) % N
+#define THINKING 0
+#define HUNGRY   1
+#define EATING   2
+typedef int semaphore;
+semaphore mutex = 1;
+semaphore s[N];       
+int state[N];
+\end{verbatim}
+
+\subsection{La funzione \texttt{philosopher}}
+\label{sec-3-2}
+
+La funzione \texttt{philosopher} è banale, perché tutte le difficoltà sono
+nascoste in \texttt{take\_forks} e \texttt{put\_forks}.  Nella mia implementazione,
+\texttt{think} e \texttt{eat} accettano un argomento (l'indice \texttt{i}) per
+permettere il \emph{logging}.
+
+\begin{verbatim}
+void philosopher(int i) {
+
+  while (1) {           
+    think();
+    take_forks(i);
+    eat();
+    put_forks(i);
+  }
+}
+\end{verbatim}
+
+\subsection{La funzione \texttt{take\_forks}}
+\label{sec-3-3}
+
+Qui cominciano le difficoltà! Vediamo di capire cosa succede:
+
+\begin{enumerate}
+\item le due chiamate su \texttt{mutex} servono a proteggere la sezione
+critica, ossia l'accesso diretto o indiretto (via \texttt{test}) al
+vettore \texttt{state};
+\item il filosofo prima di cambia il suo stato in \texttt{HUNGRY} e poi
+chiama la funzione \texttt{test} che dopo controlla se è il caso e se è
+possibile prendere le forchette (ovvero se i due filosofi vicini
+non stanno mangiando) e se tutto va bene passa allo stato
+\texttt{EATING} e fa un \texttt{up} su \texttt{s[i]};
+\item poi il filosofo esegue una \texttt{down} su \texttt{s[i]} che lo blocca se
+nella \texttt{test} non è stato eseguita la \texttt{up} corrispondente (verrà
+poi eventualmente sboccato dai vicini, vedremo come).
+\end{enumerate}
+
+\begin{verbatim}
+void take_forks(int i) {
+
+  down(&mutex);
+  state[i] = HUNGRY;
+  test(i);
+  up(&mutex);
+  down(&s[i]);
+}
+\end{verbatim}
+
+\subsection{La funzione \texttt{put\_forks}}
+\label{sec-3-4}
+
+La funzione \texttt{put\_forks} è relativamente semplice, le due chiamate a
+\texttt{test} servono a "sbloccare" (se ce ne fosse bisogno) i due vicini.
+
+\begin{verbatim}
+void put_forks(int i) {
+
+  down(&mutex);
+  state[i] = THINKING;
+  test(LEFT);
+  test(RIGHT);
+  up(&mutex);
+}
+\end{verbatim}
+
+\subsection{La funzione \texttt{test}}
+\label{sec-3-5}
+
+La funzione \texttt{test} è forse quella più "magica" e più difficile da
+capire (anche perché il nome non è forse scelto in modo ottimale).
+In pratica \emph{offre} ad un filosofo la possibilità di mangiare a
+patto che sia nello stato \texttt{HUNGRY} e che i suoi vicini non stiamo
+mangiando.  È importante notare che la funzione è chiamata da un
+filosofo in due "modi" e in due "occasioni" differenti:
+
+\begin{enumerate}
+\item su sé stesso nella \texttt{take\_forks},
+\item sui vicini nella \texttt{put\_forks}.
+\end{enumerate}
+
+\begin{verbatim}
+void test(int i) {
+
+  if (state[i]     == HUNGRY &&
+      state[LEFT]  != EATING &&
+      state[RIGHT] != EATING) {
+
+    state[i] = EATING;
+    up(&s[i]);    
+  }
+}
+\end{verbatim}
+
+
+\section{Una ricostruzione (in Python)}
+\label{sec-4}
+
+
+Ammesso che la soluzione di Dijstra non mi sarebbe mai venuta in
+mente, ma che però ho capito come funziona, adesso voglio vedere di
+trovare un "racconto" di una sua "ricostruzione" e già che ci sono
+usando Python!
+
+Comincio con un parametro che indica il numero dei filosofi, una
+lista che mantenga lo stato di ciascuno di loro e un semaforo che
+protegga l'accesso alla lista (inizialmente disponibile).
+\begin{verbatim}
+import threading
+import random
+import time
+import sys
+
+PHIL_COUNT = 5
+THINKING, HUNGRY, EATING = range(3)
+STATE = [THINKING] * PHIL_COUNT
+SEM_STATE = threading.Semaphore(1)
+\end{verbatim}
+
+In molti punti dell'implementazione devo fare riferimento ad un dato
+filosofo e ai due che siedono alla sua sinistra e alla sua destra.
+Siccome se faccio un disegno della tavola numero i filosofi in senso
+orario, mi viene naturale usare l'indice successivo per il filosofo
+di sinistra e il precedente per quello di destra.  Definisco delle
+funzioni che implementano questa scelta:
+\begin{verbatim}
+def LEFT(i):
+    return (i + 1) % PHIL_COUNT
+
+def RIGHT(i):
+    return (i - 1) % PHIL_COUNT
+\end{verbatim}
+
+Definisco alcune funzioni per la gestione dei semafori.  Preferisco
+i nomi \texttt{wait} e \texttt{signal} quando uso i semafori per sincronizzare
+\emph{thread} distinti, mentre trovo più espressivi \texttt{acquire} e \texttt{release}
+quando li uso come "lock" per proteggere delle \emph{critical section}.
+\begin{verbatim}
+def wait(sem):
+    sem.acquire()
+
+def signal(sem):
+    sem.release()
+
+acquire = wait
+release = signal
+\end{verbatim}
+
+Poi posso scrivere le funzione \texttt{philosopher}, \texttt{think} e \texttt{eat} che
+sono abbastanza ovvie e le funzioni accessorie \texttt{get\_think\_time} e
+\texttt{get\_eat\_time} almeno in una loro versione banale.
+\begin{verbatim}
+def get_think_time(i):
+  return random.random()
+
+def get_eat_time(i):
+  return random.random()
+
+def show(s):
+    sys.stderr.write(s + "\n")
+
+def think(i):
+  show("THINK %d" % i)
+  t = get_think_time(i)
+  time.sleep(t)
+
+def eat(i):
+  show("EAT %d" % i)
+  t = get_eat_time(i)
+  time.sleep(t)
+
+RUN = True
+
+def philosopher(i):
+
+  while RUN:
+      think(i)
+      take_forks(i)
+      eat(i)
+      put_forks(i)
+\end{verbatim}
+
+Adesso comincia la parte difficile: ricostruire \texttt{take\_forks} e
+\texttt{put\_forks}.
+
+Forse è più facile cominciare da \texttt{put\_forks}, per la quale la
+successione delle operazioni mi pare più intuitiva.  Il filosofo si
+può mettere subito nello stato \texttt{THINKING} per poi offrire ai suoi
+due vicini la possibilità di mangiare.
+\begin{verbatim}
+def put_forks(i):
+    acquire(SEM_STATE)
+    STATE[i] = THINKING
+    test_chance(LEFT(i))
+    test_chance(RIGHT(i))
+    release(SEM_STATE)
+\end{verbatim}
+
+Ora il problema è cosa mettere in \texttt{test\_chance} (che è la \texttt{test}
+della soluzione originale).  Si può intuire che dovrà includere una
+\texttt{signal} su un semaforo su cui i vicini potrebbero essere in \texttt{wait}.
+Mi serve quindi una lista \texttt{TURN} di semafori.  
+\begin{verbatim}
+TURN = [threading.Semaphore(0) for _ in range(PHIL_COUNT)]
+\end{verbatim}
+
+D'altra parte un filosofo può sfruttare l'offerta solo se è nello
+stato \texttt{HUNGRY} e se i \textbf{suoi} vicini non stanno mangiando!  Una prima
+approssimazione potrebbe quindi essere la seguente:
+\begin{verbatim}
+def test_chance(i):
+    if (STATE[i] == HUNGRY and
+        STATE[LEFT(i)] != EATING and
+        STATE[RIGHT(i)] != EATING):
+
+        signal(TURN[i])
+\end{verbatim}
+
+Provo adesso a scrivere \texttt{take\_forks}.  La prima cosa da fare è
+"prenotarsi" per una possibile \emph{chance} passando nello stato
+\texttt{HUNGRY}, poi provare la fortuna con \texttt{test\_chance} e mettersi in
+\texttt{wait}.  Il trucco qui è che mi metto in \texttt{wait} su un semaforo che,
+forse, è stato appena incrementato (nella \texttt{test\_chance}).
+\begin{verbatim}
+def take_forks(i):
+    acquire(SEM_STATE)
+    STATE[i] = HUNGRY
+    test_chance(i)
+    release(SEM_STATE)
+    wait(TURN[i])
+\end{verbatim}
+
+Resta il problema di dove fare il passaggio a \texttt{EATING}!  Ovviamente
+devo farlo all'interno di una \emph{critical section} protetta da
+\texttt{SEM\_STATE}, ma d'altra parte la \texttt{wait} ne deve rimanere fuori
+(altrimenti rischio di bloccare tutto).  Potrei quindi pensare di
+passare a \texttt{EATING} all'interno di \texttt{test\_chance}!
+\begin{verbatim}
+def test_chance(i):
+    if (STATE[i] == HUNGRY and
+        STATE[LEFT(i)] != EATING and
+        STATE[RIGHT(i)] != EATING):
+
+        STATE[i] = EATING
+        signal(TURN[i])
+        ii = [str(i) for i in range(PHIL_COUNT) if STATE[i] == EATING]
+        s = ", ".join(ii)
+        show("Eaters: %s" % s)
+        if len(ii) > 2:         
+            raise Exception("Cazzarola")
+\end{verbatim}
+
+Adesso serve un minimo di \texttt{main} per provare il tutto!
+
+\begin{verbatim}
+def main():
+
+    tt = [threading.Thread(target=philosopher,
+                           args=(i,))
+                           for i in range(PHIL_COUNT)]
+    for t in tt:
+        t.start()
+
+    for t in tt:
+        t.join()
+
+if __name__ == '__main__':
+
+    main()
+\end{verbatim}
+% Emacs 24.3.1 (Org mode 8.2.4)
+\end{document}

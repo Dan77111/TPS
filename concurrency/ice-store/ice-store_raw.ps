@@ -1,0 +1,1576 @@
+%!PS-Adobe-3.0
+%%BoundingBox: 18 36 577 806
+%%Title: Enscript Output
+%%Creator: GNU Enscript 1.6.5.90
+%%CreationDate: Tue Mar 10 17:37:20 2015
+%%Orientation: Landscape
+%%Pages: (atend)
+%%DocumentMedia: A4 595 842 0 () ()
+%%DocumentNeededResources: (atend)
+%%EndComments
+%%BeginProlog
+%%BeginResource: procset Enscript-Prolog 1.6.5 90
+%
+% Procedures.
+%
+
+/_S {	% save current state
+  /_s save def
+} def
+/_R {	% restore from saved state
+  _s restore
+} def
+
+/S {	% showpage protecting gstate
+  gsave
+  showpage
+  grestore
+} bind def
+
+/MF {	% fontname newfontname -> -	make a new encoded font
+  /newfontname exch def
+  /fontname exch def
+
+  /fontdict fontname findfont def
+  /newfont fontdict maxlength dict def
+
+  fontdict {
+    exch
+    dup /FID eq {
+      % skip FID pair
+      pop pop
+    } {
+      % copy to the new font dictionary
+      exch newfont 3 1 roll put
+    } ifelse
+  } forall
+
+  newfont /FontName newfontname put
+
+  % insert only valid encoding vectors
+  encoding_vector length 256 eq {
+    newfont /Encoding encoding_vector put
+  } if
+
+  newfontname newfont definefont pop
+} def
+
+/MF_PS { % fontname newfontname -> -	make a new font preserving its enc
+  /newfontname exch def
+  /fontname exch def
+
+  /fontdict fontname findfont def
+  /newfont fontdict maxlength dict def
+
+  fontdict {
+    exch
+    dup /FID eq {
+      % skip FID pair
+      pop pop
+    } {
+      % copy to the new font dictionary
+      exch newfont 3 1 roll put
+    } ifelse
+  } forall
+
+  newfont /FontName newfontname put
+
+  newfontname newfont definefont pop
+} def
+
+/SF { % fontname width height -> -	set a new font
+  /height exch def
+  /width exch def
+
+  findfont
+  [width 0 0 height 0 0] makefont setfont
+} def
+
+/SUF { % fontname width height -> -	set a new user font
+  /height exch def
+  /width exch def
+
+  /F-gs-user-font MF
+  /F-gs-user-font width height SF
+} def
+
+/SUF_PS { % fontname width height -> -	set a new user font preserving its enc
+  /height exch def
+  /width exch def
+
+  /F-gs-user-font MF_PS
+  /F-gs-user-font width height SF
+} def
+
+/M {moveto} bind def
+/s {show} bind def
+
+/Box {	% x y w h -> -			define box path
+  /d_h exch def /d_w exch def /d_y exch def /d_x exch def
+  d_x d_y  moveto
+  d_w 0 rlineto
+  0 d_h rlineto
+  d_w neg 0 rlineto
+  closepath
+} def
+
+/bgs {	% x y height blskip gray str -> -	show string with bg color
+  /str exch def
+  /gray exch def
+  /blskip exch def
+  /height exch def
+  /y exch def
+  /x exch def
+
+  gsave
+    x y blskip sub str stringwidth pop height Box
+    gray setgray
+    fill
+  grestore
+  x y M str s
+} def
+
+/bgcs { % x y height blskip red green blue str -> -  show string with bg color
+  /str exch def
+  /blue exch def
+  /green exch def
+  /red exch def
+  /blskip exch def
+  /height exch def
+  /y exch def
+  /x exch def
+
+  gsave
+    x y blskip sub str stringwidth pop height Box
+    red green blue setrgbcolor
+    fill
+  grestore
+  x y M str s
+} def
+
+% Highlight bars.
+/highlight_bars {	% nlines lineheight output_y_margin gray -> -
+  gsave
+    setgray
+    /ymarg exch def
+    /lineheight exch def
+    /nlines exch def
+
+    % This 2 is just a magic number to sync highlight lines to text.
+    0 d_header_y ymarg sub 2 sub translate
+
+    /cw d_output_w cols div def
+    /nrows d_output_h ymarg 2 mul sub lineheight div cvi def
+
+    % for each column
+    0 1 cols 1 sub {
+      cw mul /xp exch def
+
+      % for each rows
+      0 1 nrows 1 sub {
+        /rn exch def
+        rn lineheight mul neg /yp exch def
+        rn nlines idiv 2 mod 0 eq {
+	  % Draw highlight bar.  4 is just a magic indentation.
+	  xp 4 add yp cw 8 sub lineheight neg Box fill
+	} if
+      } for
+    } for
+
+  grestore
+} def
+
+% Line highlight bar.
+/line_highlight {	% x y width height gray -> -
+  gsave
+    /gray exch def
+    Box gray setgray fill
+  grestore
+} def
+
+% Column separator lines.
+/column_lines {
+  gsave
+    .1 setlinewidth
+    0 d_footer_h translate
+    /cw d_output_w cols div def
+    1 1 cols 1 sub {
+      cw mul 0 moveto
+      0 d_output_h rlineto stroke
+    } for
+  grestore
+} def
+
+% Column borders.
+/column_borders {
+  gsave
+    .1 setlinewidth
+    0 d_footer_h moveto
+    0 d_output_h rlineto
+    d_output_w 0 rlineto
+    0 d_output_h neg rlineto
+    closepath stroke
+  grestore
+} def
+
+% Do the actual underlay drawing
+/draw_underlay {
+  ul_style 0 eq {
+    ul_str true charpath stroke
+  } {
+    ul_str show
+  } ifelse
+} def
+
+% Underlay
+/underlay {	% - -> -
+  gsave
+    0 d_page_h translate
+    d_page_h neg d_page_w atan rotate
+
+    ul_gray setgray
+    ul_font setfont
+    /dw d_page_h dup mul d_page_w dup mul add sqrt def
+    ul_str stringwidth pop dw exch sub 2 div ul_h_ptsize -2 div moveto
+    draw_underlay
+  grestore
+} def
+
+/user_underlay {	% - -> -
+  gsave
+    ul_x ul_y translate
+    ul_angle rotate
+    ul_gray setgray
+    ul_font setfont
+    0 0 ul_h_ptsize 2 div sub moveto
+    draw_underlay
+  grestore
+} def
+
+% Page prefeed
+/page_prefeed {		% bool -> -
+  statusdict /prefeed known {
+    statusdict exch /prefeed exch put
+  } {
+    pop
+  } ifelse
+} def
+
+% Wrapped line markers
+/wrapped_line_mark {	% x y charwith charheight type -> -
+  /type exch def
+  /h exch def
+  /w exch def
+  /y exch def
+  /x exch def
+
+  type 2 eq {
+    % Black boxes (like TeX does)
+    gsave
+      0 setlinewidth
+      x w 4 div add y M
+      0 h rlineto w 2 div 0 rlineto 0 h neg rlineto
+      closepath fill
+    grestore
+  } {
+    type 3 eq {
+      % Small arrows
+      gsave
+        .2 setlinewidth
+        x w 2 div add y h 2 div add M
+        w 4 div 0 rlineto
+        x w 4 div add y lineto stroke
+
+        x w 4 div add w 8 div add y h 4 div add M
+        x w 4 div add y lineto
+	w 4 div h 8 div rlineto stroke
+      grestore
+    } {
+      % do nothing
+    } ifelse
+  } ifelse
+} def
+
+% EPSF import.
+
+/BeginEPSF {
+  /b4_Inc_state save def    		% Save state for cleanup
+  /dict_count countdictstack def	% Count objects on dict stack
+  /op_count count 1 sub def		% Count objects on operand stack
+  userdict begin
+  /showpage { } def
+  0 setgray 0 setlinecap
+  1 setlinewidth 0 setlinejoin
+  10 setmiterlimit [ ] 0 setdash newpath
+  /languagelevel where {
+    pop languagelevel
+    1 ne {
+      false setstrokeadjust false setoverprint
+    } if
+  } if
+} bind def
+
+/EndEPSF {
+  count op_count sub { pos } repeat	% Clean up stacks
+  countdictstack dict_count sub { end } repeat
+  b4_Inc_state restore
+} bind def
+
+% Check PostScript language level.
+/languagelevel where {
+  pop /gs_languagelevel languagelevel def
+} {
+  /gs_languagelevel 1 def
+} ifelse
+%%EndResource
+%%BeginResource: procset Enscript-Encoding-88591 1.6.5 90
+/encoding_vector [
+/.notdef      	/.notdef      	/.notdef      	/.notdef      	
+/.notdef      	/.notdef      	/.notdef      	/.notdef      	
+/.notdef      	/.notdef      	/.notdef      	/.notdef      	
+/.notdef      	/.notdef      	/.notdef      	/.notdef      	
+/.notdef      	/.notdef      	/.notdef      	/.notdef      	
+/.notdef      	/.notdef      	/.notdef      	/.notdef      	
+/.notdef      	/.notdef      	/.notdef      	/.notdef      	
+/.notdef      	/.notdef      	/.notdef      	/.notdef      	
+/space        	/exclam       	/quotedbl     	/numbersign   	
+/dollar       	/percent      	/ampersand    	/quoteright   	
+/parenleft    	/parenright   	/asterisk     	/plus         	
+/comma        	/hyphen       	/period       	/slash        	
+/zero         	/one          	/two          	/three        	
+/four         	/five         	/six          	/seven        	
+/eight        	/nine         	/colon        	/semicolon    	
+/less         	/equal        	/greater      	/question     	
+/at           	/A            	/B            	/C            	
+/D            	/E            	/F            	/G            	
+/H            	/I            	/J            	/K            	
+/L            	/M            	/N            	/O            	
+/P            	/Q            	/R            	/S            	
+/T            	/U            	/V            	/W            	
+/X            	/Y            	/Z            	/bracketleft  	
+/backslash    	/bracketright 	/asciicircum  	/underscore   	
+/quoteleft    	/a            	/b            	/c            	
+/d            	/e            	/f            	/g            	
+/h            	/i            	/j            	/k            	
+/l            	/m            	/n            	/o            	
+/p            	/q            	/r            	/s            	
+/t            	/u            	/v            	/w            	
+/x            	/y            	/z            	/braceleft    	
+/bar          	/braceright   	/tilde        	/.notdef      	
+/.notdef      	/.notdef      	/.notdef      	/.notdef      	
+/.notdef      	/.notdef      	/.notdef      	/.notdef      	
+/.notdef      	/.notdef      	/.notdef      	/.notdef      	
+/.notdef      	/.notdef      	/.notdef      	/.notdef      	
+/.notdef      	/.notdef      	/.notdef      	/.notdef      	
+/.notdef      	/.notdef      	/.notdef      	/.notdef      	
+/.notdef      	/.notdef      	/.notdef      	/.notdef      	
+/.notdef      	/.notdef      	/.notdef      	/.notdef      	
+/space        	/exclamdown   	/cent         	/sterling     	
+/currency     	/yen          	/brokenbar    	/section      	
+/dieresis     	/copyright    	/ordfeminine  	/guillemotleft	
+/logicalnot   	/hyphen       	/registered   	/macron       	
+/degree       	/plusminus    	/twosuperior  	/threesuperior	
+/acute        	/mu           	/paragraph    	/bullet       	
+/cedilla      	/onesuperior  	/ordmasculine 	/guillemotright	
+/onequarter   	/onehalf      	/threequarters	/questiondown 	
+/Agrave       	/Aacute       	/Acircumflex  	/Atilde       	
+/Adieresis    	/Aring        	/AE           	/Ccedilla     	
+/Egrave       	/Eacute       	/Ecircumflex  	/Edieresis    	
+/Igrave       	/Iacute       	/Icircumflex  	/Idieresis    	
+/Eth          	/Ntilde       	/Ograve       	/Oacute       	
+/Ocircumflex  	/Otilde       	/Odieresis    	/multiply     	
+/Oslash       	/Ugrave       	/Uacute       	/Ucircumflex  	
+/Udieresis    	/Yacute       	/Thorn        	/germandbls   	
+/agrave       	/aacute       	/acircumflex  	/atilde       	
+/adieresis    	/aring        	/ae           	/ccedilla     	
+/egrave       	/eacute       	/ecircumflex  	/edieresis    	
+/igrave       	/iacute       	/icircumflex  	/idieresis    	
+/eth          	/ntilde       	/ograve       	/oacute       	
+/ocircumflex  	/otilde       	/odieresis    	/divide       	
+/oslash       	/ugrave       	/uacute       	/ucircumflex  	
+/udieresis    	/yacute       	/thorn        	/ydieresis    	
+] def
+%%EndResource
+%%EndProlog
+%%BeginSetup
+%%IncludeResource: font Courier-Bold
+%%IncludeResource: font Courier
+/HFpt_w 10 def
+/HFpt_h 10 def
+/Courier-Bold /HF-gs-font MF
+/HF /HF-gs-font findfont [HFpt_w 0 0 HFpt_h 0 0] makefont def
+/Courier /F-gs-font MF
+/F-gs-font 9 9 SF
+/#copies 1 def
+% Pagedevice definitions:
+gs_languagelevel 1 gt {
+  <<
+    /PageSize [595 842] 
+  >> setpagedevice
+} if
+%%BeginResource: procset Enscript-Header-simple 1.6.5 90
+
+/do_header {	% print default simple header
+  gsave
+    d_header_x d_header_y HFpt_h 3 div add translate
+
+    HF setfont
+    user_header_p {
+      5 0 moveto user_header_left_str show
+
+      d_header_w user_header_center_str stringwidth pop sub 2 div
+      0 moveto user_header_center_str show
+
+      d_header_w user_header_right_str stringwidth pop sub 5 sub
+      0 moveto user_header_right_str show
+    } {
+      5 0 moveto fname show
+      45 0 rmoveto fmodstr show
+      45 0 rmoveto pagenumstr show
+    } ifelse
+
+  grestore
+} def
+%%EndResource
+/d_page_w 770 def
+/d_page_h 559 def
+/d_header_x 0 def
+/d_header_y 544 def
+/d_header_w 770 def
+/d_header_h 15 def
+/d_footer_x 0 def
+/d_footer_y 0 def
+/d_footer_w 770 def
+/d_footer_h 0 def
+/d_output_w 770 def
+/d_output_h 544 def
+/cols 2 def
+%%EndSetup
+%%Page: (1) 1
+%%BeginPageSetup
+_S
+90 rotate
+36 -577 translate
+/pagenum 1 def
+/fname (ice-store_raw.py) def
+/fdir (.) def
+/ftail (ice-store_raw.py) def
+% User defined strings:
+/fmodstr (Tue Mar 10 17:37:14 2015) def
+/pagenumstr (1) def
+/user_header_p false def
+/user_footer_p false def
+%%EndPageSetup
+do_header
+27.6 532 M (1:) s
+/Courier-Oblique 9 9 SUF
+0.698039 0.133333 0.133333 setrgbcolor
+43.8 532 M
+(# -*- coding:iso-latin-1 -*-) s
+/F-gs-font 9 9 SF
+27.6 522 M (2:) s
+/Courier-Oblique 9 9 SUF
+/F-gs-font 9 9 SF
+0 setgray
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+43.8 522 M
+(import) s
+/F-gs-font 9 9 SF
+0 setgray
+76.2 522 M
+( random                   ) s
+27.6 512 M (3:) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+43.8 512 M
+(import) s
+/F-gs-font 9 9 SF
+0 setgray
+76.2 512 M
+( threading                ) s
+27.6 502 M (4:) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+43.8 502 M
+(import) s
+/F-gs-font 9 9 SF
+0 setgray
+76.2 502 M
+( time                     ) s
+27.6 492 M (5:) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+43.8 492 M
+(import) s
+/F-gs-font 9 9 SF
+0 setgray
+76.2 492 M
+( os                       ) s
+27.6 482 M (6:) s
+27.6 472 M (7:) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+43.8 472 M
+(def) s
+/F-gs-font 9 9 SF
+0 setgray
+60 472 M
+( ) s
+/Courier-Bold 9 9 SUF
+0 0 1 setrgbcolor
+65.4 472 M
+(show) s
+/F-gs-font 9 9 SF
+0 setgray
+87 472 M
+(\(mess\):) s
+27.6 462 M (8:) s
+43.8 462 M
+(    os.write\(1, mess + ) s
+/Courier-Bold 9 9 SUF
+0.737255 0.560784 0.560784 setrgbcolor
+168 462 M
+("\\n") s
+/F-gs-font 9 9 SF
+0 setgray
+189.6 462 M
+(\)) s
+27.6 452 M (9:) s
+43.8 452 M
+(    ) s
+22.2 442 M (10:) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+43.8 442 M
+(def) s
+/F-gs-font 9 9 SF
+0 setgray
+60 442 M
+( ) s
+/Courier-Bold 9 9 SUF
+0 0 1 setrgbcolor
+65.4 442 M
+(down) s
+/F-gs-font 9 9 SF
+0 setgray
+87 442 M
+(\(sem\):) s
+22.2 432 M (11:) s
+43.8 432 M
+(    sem.acquire\(\)) s
+22.2 422 M (12:) s
+22.2 412 M (13:) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+43.8 412 M
+(def) s
+/F-gs-font 9 9 SF
+0 setgray
+60 412 M
+( ) s
+/Courier-Bold 9 9 SUF
+0 0 1 setrgbcolor
+65.4 412 M
+(up) s
+/F-gs-font 9 9 SF
+0 setgray
+76.2 412 M
+(\(sem\):) s
+22.2 402 M (14:) s
+43.8 402 M
+(    sem.release\(\)) s
+22.2 392 M (15:) s
+22.2 382 M (16:) s
+43.8 382 M
+(acquire = wait = down) s
+22.2 372 M (17:) s
+43.8 372 M
+(release = signal = up) s
+22.2 362 M (18:) s
+22.2 352 M (19:) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+43.8 352 M
+(class) s
+/F-gs-font 9 9 SF
+0 setgray
+70.8 352 M
+( Inspection\(\):) s
+22.2 342 M (20:) s
+43.8 342 M
+(    ) s
+22.2 332 M (21:) s
+43.8 332 M
+(    ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+65.4 332 M
+(def) s
+/F-gs-font 9 9 SF
+0 setgray
+81.6 332 M
+( ) s
+/Courier-Bold 9 9 SUF
+0 0 1 setrgbcolor
+87 332 M
+(__init__) s
+/F-gs-font 9 9 SF
+0 setgray
+130.2 332 M
+(\(self\):) s
+22.2 322 M (22:) s
+43.8 322 M
+(        self.passed = False) s
+22.2 312 M (23:) s
+43.8 312 M
+(        self.requested = threading.Semaphore\(0\)) s
+22.2 302 M (24:) s
+43.8 302 M
+(        self.finished = threading.Semaphore\(0\)) s
+22.2 292 M (25:) s
+43.8 292 M
+(        self.lock = threading.Semaphore\(1\)) s
+22.2 282 M (26:) s
+22.2 272 M (27:) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+43.8 272 M
+(class) s
+/F-gs-font 9 9 SF
+0 setgray
+70.8 272 M
+( Line\(\):) s
+22.2 262 M (28:) s
+43.8 262 M
+(    ) s
+22.2 252 M (29:) s
+43.8 252 M
+(    ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+65.4 252 M
+(def) s
+/F-gs-font 9 9 SF
+0 setgray
+81.6 252 M
+( ) s
+/Courier-Bold 9 9 SUF
+0 0 1 setrgbcolor
+87 252 M
+(__init__) s
+/F-gs-font 9 9 SF
+0 setgray
+130.2 252 M
+(\(self, customers_count\):) s
+22.2 242 M (30:) s
+43.8 242 M
+(        self.number = 0) s
+22.2 232 M (31:) s
+43.8 232 M
+(        self.requested = threading.Semaphore\(0\)) s
+22.2 222 M (32:) s
+43.8 222 M
+(        self.customers = [) s
+22.2 212 M (33:) s
+43.8 212 M
+(            threading.Semaphore\(0\)] * customers_count) s
+22.2 202 M (34:) s
+43.8 202 M
+(        self.lock = threading.Semaphore\(1\)) s
+22.2 192 M (35:) s
+43.8 192 M
+(        ) s
+22.2 182 M (36:) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+43.8 182 M
+(def) s
+/F-gs-font 9 9 SF
+0 setgray
+60 182 M
+( ) s
+/Courier-Bold 9 9 SUF
+0 0 1 setrgbcolor
+65.4 182 M
+(do_inspection) s
+/F-gs-font 9 9 SF
+0 setgray
+135.6 182 M
+(\(inspected_count\):) s
+22.2 172 M (37:) s
+43.8 172 M
+(    ) s
+22.2 162 M (38:) s
+43.8 162 M
+(    mess = ) s
+/Courier-Bold 9 9 SUF
+0.737255 0.560784 0.560784 setrgbcolor
+103.2 162 M
+("manager: inspection %d") s
+/F-gs-font 9 9 SF
+0 setgray
+232.8 162 M
+( % inspected_count) s
+22.2 152 M (39:) s
+43.8 152 M
+(    show\(mess\)) s
+22.2 142 M (40:) s
+43.8 142 M
+(    ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+65.4 142 M
+(return) s
+/F-gs-font 9 9 SF
+0 setgray
+97.8 142 M
+( random.choice\(range\(approved_rate + 1\)\) > 0) s
+22.2 132 M (41:) s
+43.8 132 M
+(     ) s
+22.2 122 M (42:) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+43.8 122 M
+(def) s
+/F-gs-font 9 9 SF
+0 setgray
+60 122 M
+( ) s
+/Courier-Bold 9 9 SUF
+0 0 1 setrgbcolor
+65.4 122 M
+(manager) s
+/F-gs-font 9 9 SF
+0 setgray
+103.2 122 M
+(\(tot_cones, approved_rate, inspection\):) s
+22.2 112 M (43:) s
+22.2 102 M (44:) s
+43.8 102 M
+(    approved_count = 0) s
+22.2 92 M (45:) s
+43.8 92 M
+(    inspected_count = 0) s
+22.2 82 M (46:) s
+43.8 82 M
+(    ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+65.4 82 M
+(while) s
+/F-gs-font 9 9 SF
+0 setgray
+92.4 82 M
+( approved_count < tot_cones:) s
+22.2 72 M (47:) s
+43.8 72 M
+(        ) s
+22.2 62 M (48:) s
+43.8 62 M
+(        wait\(inspection.requested\)        ) s
+22.2 52 M (49:) s
+43.8 52 M
+(        inspection.passed = do_inspection\(inspected_count\)) s
+22.2 42 M (50:) s
+43.8 42 M
+(        inspected_count += 1) s
+407.2 532 M (51:) s
+428.8 532 M
+(        ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+472 532 M
+(if) s
+/F-gs-font 9 9 SF
+0 setgray
+482.8 532 M
+( inspection.passed:) s
+407.2 522 M (52:) s
+428.8 522 M
+(            approved_count += 1) s
+407.2 512 M (53:) s
+428.8 512 M
+(        signal\(inspection.finished\)           ) s
+407.2 502 M (54:) s
+407.2 492 M (55:) s
+428.8 492 M
+(    time.sleep\(1\)) s
+407.2 482 M (56:) s
+428.8 482 M
+(    mess = ) s
+/Courier-Bold 9 9 SUF
+0.737255 0.560784 0.560784 setrgbcolor
+488.2 482 M
+("manager leaves: %d approved %d rejected") s
+/F-gs-font 9 9 SF
+0 setgray
+709.6 482 M
+( % \() s
+407.2 472 M (57:) s
+428.8 472 M
+(        approved_count, inspected_count - approved_count\)) s
+407.2 462 M (58:) s
+428.8 462 M
+(    show\(mess\)) s
+407.2 452 M (59:) s
+407.2 442 M (60:) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+428.8 442 M
+(def) s
+/F-gs-font 9 9 SF
+0 setgray
+445 442 M
+( ) s
+/Courier-Bold 9 9 SUF
+0 0 1 setrgbcolor
+450.4 442 M
+(make_cone) s
+/F-gs-font 9 9 SF
+0 setgray
+499 442 M
+(\(clerk, cone, customer\):) s
+407.2 432 M (61:) s
+428.8 432 M
+(    ) s
+407.2 422 M (62:) s
+428.8 422 M
+(    mess = ) s
+/Courier-Bold 9 9 SUF
+0.737255 0.560784 0.560784 setrgbcolor
+488.2 422 M
+("clerk %2d: making cone %d for customer %d") s
+/F-gs-font 9 9 SF
+0 setgray
+720.4 422 M
+( % \() s
+407.2 412 M (63:) s
+428.8 412 M
+(        clerk, cone, customer\)) s
+407.2 402 M (64:) s
+428.8 402 M
+(    show\(mess\)) s
+407.2 392 M (65:) s
+407.2 382 M (66:) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+428.8 382 M
+(def) s
+/F-gs-font 9 9 SF
+0 setgray
+445 382 M
+( ) s
+/Courier-Bold 9 9 SUF
+0 0 1 setrgbcolor
+450.4 382 M
+(log_inspection) s
+/F-gs-font 9 9 SF
+0 setgray
+526 382 M
+(\(clerk, cone, customer, passed\):) s
+407.2 372 M (67:) s
+428.8 372 M
+(    ) s
+407.2 362 M (68:) s
+428.8 362 M
+(    mess = ) s
+/Courier-Bold 9 9 SUF
+0.737255 0.560784 0.560784 setrgbcolor
+488.2 362 M
+("clerk %2d: cone %d for customer %d %s") s
+/F-gs-font 9 9 SF
+0 setgray
+698.8 362 M
+( % \() s
+407.2 352 M (69:) s
+428.8 352 M
+(        clerk, cone, customer, ) s
+407.2 342 M (70:) s
+428.8 342 M
+(        [) s
+/Courier-Bold 9 9 SUF
+0.737255 0.560784 0.560784 setrgbcolor
+477.4 342 M
+("REJECTED") s
+/F-gs-font 9 9 SF
+0 setgray
+531.4 342 M
+(, ) s
+/Courier-Bold 9 9 SUF
+0.737255 0.560784 0.560784 setrgbcolor
+542.2 342 M
+("passed") s
+/F-gs-font 9 9 SF
+0 setgray
+585.4 342 M
+(][passed]\)) s
+407.2 332 M (71:) s
+428.8 332 M
+(    show\(mess\)) s
+407.2 322 M (72:) s
+428.8 322 M
+(    ) s
+407.2 312 M (73:) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+428.8 312 M
+(def) s
+/F-gs-font 9 9 SF
+0 setgray
+445 312 M
+( ) s
+/Courier-Bold 9 9 SUF
+0 0 1 setrgbcolor
+450.4 312 M
+(clerk) s
+/F-gs-font 9 9 SF
+0 setgray
+477.4 312 M
+(\(id, customer, cone, clerk_done, inspection\):) s
+407.2 302 M (74:) s
+407.2 292 M (75:) s
+428.8 292 M
+(    passed = False) s
+407.2 282 M (76:) s
+428.8 282 M
+(    ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+450.4 282 M
+(while) s
+/F-gs-font 9 9 SF
+0 setgray
+477.4 282 M
+( ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+482.8 282 M
+(not) s
+/F-gs-font 9 9 SF
+0 setgray
+499 282 M
+( passed:) s
+407.2 272 M (77:) s
+428.8 272 M
+(        make_cone\(id, cone, customer\)) s
+407.2 262 M (78:) s
+428.8 262 M
+(        acquire\(inspection.lock\)       ) s
+407.2 252 M (79:) s
+428.8 252 M
+(        signal\(inspection.requested\)   ) s
+407.2 242 M (80:) s
+428.8 242 M
+(        wait\(inspection.finished\)      ) s
+407.2 232 M (81:) s
+428.8 232 M
+(        passed = inspection.passed) s
+407.2 222 M (82:) s
+428.8 222 M
+(        log_inspection\(id, cone, customer, passed\)) s
+407.2 212 M (83:) s
+428.8 212 M
+(        release\(inspection.lock\)       ) s
+407.2 202 M (84:) s
+428.8 202 M
+(    signal\(clerk_done\)                 ) s
+407.2 192 M (85:) s
+407.2 182 M (86:) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+428.8 182 M
+(def) s
+/F-gs-font 9 9 SF
+0 setgray
+445 182 M
+( ) s
+/Courier-Bold 9 9 SUF
+0 0 1 setrgbcolor
+450.4 182 M
+(browse_flavours) s
+/F-gs-font 9 9 SF
+0 setgray
+531.4 182 M
+(\(id, cones_count\):) s
+407.2 172 M (87:) s
+428.8 172 M
+(    ) s
+407.2 162 M (88:) s
+428.8 162 M
+(    mess = ) s
+/Courier-Bold 9 9 SUF
+0.737255 0.560784 0.560784 setrgbcolor
+488.2 162 M
+("customer %d: asking for %d cones") s
+/F-gs-font 9 9 SF
+0 setgray
+671.8 162 M
+( % \() s
+407.2 152 M (89:) s
+428.8 152 M
+(        id, cones_count\)) s
+407.2 142 M (90:) s
+428.8 142 M
+(    show\(mess\)) s
+407.2 132 M (91:) s
+428.8 132 M
+(    ) s
+407.2 122 M (92:) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+428.8 122 M
+(def) s
+/F-gs-font 9 9 SF
+0 setgray
+445 122 M
+( ) s
+/Courier-Bold 9 9 SUF
+0 0 1 setrgbcolor
+450.4 122 M
+(walk_to_cashier) s
+/F-gs-font 9 9 SF
+0 setgray
+531.4 122 M
+(\(customer_id\):) s
+407.2 112 M (93:) s
+428.8 112 M
+(    ) s
+407.2 102 M (94:) s
+428.8 102 M
+(    mess = ) s
+/Courier-Bold 9 9 SUF
+0.737255 0.560784 0.560784 setrgbcolor
+488.2 102 M
+("customer %d: served and going to cashier") s
+/F-gs-font 9 9 SF
+0 setgray
+715 102 M
+( % \() s
+407.2 92 M (95:) s
+428.8 92 M
+(        customer_id\)) s
+407.2 82 M (96:) s
+428.8 82 M
+(    show\(mess\)) s
+407.2 72 M (97:) s
+407.2 62 M (98:) s
+407.2 52 M (99:) s
+401.8 42 M (100:) s
+428.8 42 M
+(    ) s
+_R
+S
+%%Page: (2) 2
+%%BeginPageSetup
+_S
+90 rotate
+36 -577 translate
+/pagenum 2 def
+/fname (ice-store_raw.py) def
+/fdir (.) def
+/ftail (ice-store_raw.py) def
+% User defined strings:
+/fmodstr (Tue Mar 10 17:37:14 2015) def
+/pagenumstr (2) def
+/user_header_p false def
+/user_footer_p false def
+%%EndPageSetup
+do_header
+16.8 532 M (101:) s
+43.8 532 M
+(CLERK_COUNT = 0                 ) s
+16.8 522 M (102:) s
+16.8 512 M (103:) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+43.8 512 M
+(def) s
+/F-gs-font 9 9 SF
+0 setgray
+60 512 M
+( ) s
+/Courier-Bold 9 9 SUF
+0 0 1 setrgbcolor
+65.4 512 M
+(customer) s
+/F-gs-font 9 9 SF
+0 setgray
+108.6 512 M
+(\(id, cones_count, line, inspection\):) s
+16.8 502 M (104:) s
+43.8 502 M
+(    ) s
+16.8 492 M (105:) s
+43.8 492 M
+(    clerk_done = threading.Semaphore\(0\)) s
+16.8 482 M (106:) s
+16.8 472 M (107:) s
+43.8 472 M
+(    browse_flavours\(id, cones_count\)) s
+16.8 462 M (108:) s
+16.8 452 M (109:) s
+43.8 452 M
+(    ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+65.4 452 M
+(global) s
+/F-gs-font 9 9 SF
+0 setgray
+97.8 452 M
+( CLERK_COUNT) s
+16.8 442 M (110:) s
+43.8 442 M
+(    ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+65.4 442 M
+(for) s
+/F-gs-font 9 9 SF
+0 setgray
+81.6 442 M
+( c ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+97.8 442 M
+(in) s
+/F-gs-font 9 9 SF
+0 setgray
+108.6 442 M
+( range\(cones_count\):          ) s
+16.8 432 M (111:) s
+43.8 432 M
+(        t = threading.Thread\() s
+16.8 422 M (112:) s
+43.8 422 M
+(            target=clerk,) s
+16.8 412 M (113:) s
+43.8 412 M
+(            args=\(CLERK_COUNT + 1,) s
+16.8 402 M (114:) s
+43.8 402 M
+(            id, c, clerk_done, inspection\)\)) s
+16.8 392 M (115:) s
+43.8 392 M
+(        t.start\(\)) s
+16.8 382 M (116:) s
+43.8 382 M
+(        CLERK_COUNT += 1) s
+16.8 372 M (117:) s
+43.8 372 M
+(    ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+65.4 372 M
+(for) s
+/F-gs-font 9 9 SF
+0 setgray
+81.6 372 M
+( c ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+97.8 372 M
+(in) s
+/F-gs-font 9 9 SF
+0 setgray
+108.6 372 M
+( range\(cones_count\):          ) s
+16.8 362 M (118:) s
+43.8 362 M
+(        wait\(clerk_done\)) s
+16.8 352 M (119:) s
+16.8 342 M (120:) s
+43.8 342 M
+(    walk_to_cashier\(id\)) s
+16.8 332 M (121:) s
+43.8 332 M
+(    acquire\(line.lock\)         ) s
+16.8 322 M (122:) s
+43.8 322 M
+(    num = line.number          ) s
+16.8 312 M (123:) s
+43.8 312 M
+(    line.number += 1) s
+16.8 302 M (124:) s
+43.8 302 M
+(    release\(line.lock\)         ) s
+16.8 292 M (125:) s
+43.8 292 M
+(    signal\(line.requested\)     ) s
+16.8 282 M (126:) s
+43.8 282 M
+(    wait\(line.customers[num]\)  ) s
+16.8 272 M (127:) s
+43.8 272 M
+(    ) s
+16.8 262 M (128:) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+43.8 262 M
+(def) s
+/F-gs-font 9 9 SF
+0 setgray
+60 262 M
+( ) s
+/Courier-Bold 9 9 SUF
+0 0 1 setrgbcolor
+65.4 262 M
+(check_out) s
+/F-gs-font 9 9 SF
+0 setgray
+114 262 M
+(\(i\):) s
+16.8 252 M (129:) s
+43.8 252 M
+(    ) s
+16.8 242 M (130:) s
+43.8 242 M
+(    mess = ) s
+/Courier-Bold 9 9 SUF
+0.737255 0.560784 0.560784 setrgbcolor
+103.2 242 M
+("cashier: customer %d paid") s
+/F-gs-font 9 9 SF
+0 setgray
+249 242 M
+( % i) s
+16.8 232 M (131:) s
+43.8 232 M
+(    show\(mess\)) s
+16.8 222 M (132:) s
+16.8 212 M (133:) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+43.8 212 M
+(def) s
+/F-gs-font 9 9 SF
+0 setgray
+60 212 M
+( ) s
+/Courier-Bold 9 9 SUF
+0 0 1 setrgbcolor
+65.4 212 M
+(cashier) s
+/F-gs-font 9 9 SF
+0 setgray
+103.2 212 M
+(\(customers_count, line\):) s
+16.8 202 M (134:) s
+16.8 192 M (135:) s
+43.8 192 M
+(    ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+65.4 192 M
+(for) s
+/F-gs-font 9 9 SF
+0 setgray
+81.6 192 M
+( i ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+97.8 192 M
+(in) s
+/F-gs-font 9 9 SF
+0 setgray
+108.6 192 M
+( range\(customers_count\):) s
+16.8 182 M (136:) s
+43.8 182 M
+(        wait\(line.requested\)       ) s
+16.8 172 M (137:) s
+43.8 172 M
+(        check_out\(i\)) s
+16.8 162 M (138:) s
+43.8 162 M
+(        signal\(line.customers[i]\)            ) s
+16.8 152 M (139:) s
+43.8 152 M
+(        ) s
+16.8 142 M (140:) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+43.8 142 M
+(def) s
+/F-gs-font 9 9 SF
+0 setgray
+60 142 M
+( ) s
+/Courier-Bold 9 9 SUF
+0 0 1 setrgbcolor
+65.4 142 M
+(main) s
+/F-gs-font 9 9 SF
+0 setgray
+87 142 M
+(\(customers_count,) s
+16.8 132 M (141:) s
+43.8 132 M
+(         max_cones_per_customer,) s
+16.8 122 M (142:) s
+43.8 122 M
+(         approved_rate\):) s
+16.8 112 M (143:) s
+16.8 102 M (144:) s
+43.8 102 M
+(    cones = [random.choice\(range\(1, max_cones_per_customer\)\)) s
+16.8 92 M (145:) s
+43.8 92 M
+(             ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+114 92 M
+(for) s
+/F-gs-font 9 9 SF
+0 setgray
+130.2 92 M
+( i ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+146.4 92 M
+(in) s
+/F-gs-font 9 9 SF
+0 setgray
+157.2 92 M
+( range\(customers_count\)]) s
+16.8 82 M (146:) s
+43.8 82 M
+(    tot_cones = sum\(cones\)) s
+16.8 72 M (147:) s
+43.8 72 M
+(    mess = ) s
+/Courier-Bold 9 9 SUF
+0.737255 0.560784 0.560784 setrgbcolor
+103.2 72 M
+("main: %d cones %s") s
+/F-gs-font 9 9 SF
+0 setgray
+205.8 72 M
+( % \(tot_cones, str\(cones\)\)) s
+16.8 62 M (148:) s
+43.8 62 M
+(    show\(mess\)) s
+16.8 52 M (149:) s
+16.8 42 M (150:) s
+43.8 42 M
+(    inspection = Inspection\(\)) s
+401.8 532 M (151:) s
+428.8 532 M
+(    line = Line\(customers_count\)) s
+401.8 522 M (152:) s
+428.8 522 M
+(    ) s
+401.8 512 M (153:) s
+428.8 512 M
+(    cts = [threading.Thread\() s
+401.8 502 M (154:) s
+428.8 502 M
+(        target=customer,) s
+401.8 492 M (155:) s
+428.8 492 M
+(        args=\(i,n, line, inspection\)\)) s
+401.8 482 M (156:) s
+428.8 482 M
+(        ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+472 482 M
+(for) s
+/F-gs-font 9 9 SF
+0 setgray
+488.2 482 M
+( i,n ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+515.2 482 M
+(in) s
+/F-gs-font 9 9 SF
+0 setgray
+526 482 M
+( enumerate\(cones\)]) s
+401.8 472 M (157:) s
+428.8 472 M
+(        ) s
+401.8 462 M (158:) s
+428.8 462 M
+(    ct = threading.Thread\() s
+401.8 452 M (159:) s
+428.8 452 M
+(        target=cashier,) s
+401.8 442 M (160:) s
+428.8 442 M
+(        args=\(customers_count, line\)\)) s
+401.8 432 M (161:) s
+428.8 432 M
+(    ) s
+401.8 422 M (162:) s
+428.8 422 M
+(    mt = threading.Thread\() s
+401.8 412 M (163:) s
+428.8 412 M
+(        target=manager,) s
+401.8 402 M (164:) s
+428.8 402 M
+(        args=\(tot_cones, approved_rate, inspection\)\)) s
+401.8 392 M (165:) s
+428.8 392 M
+(    ) s
+401.8 382 M (166:) s
+428.8 382 M
+(    ct.start\(\)                     ) s
+401.8 372 M (167:) s
+428.8 372 M
+(    mt.start\(\)) s
+401.8 362 M (168:) s
+428.8 362 M
+(    ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+450.4 362 M
+(for) s
+/F-gs-font 9 9 SF
+0 setgray
+466.6 362 M
+( t ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+482.8 362 M
+(in) s
+/F-gs-font 9 9 SF
+0 setgray
+493.6 362 M
+( cts:) s
+401.8 352 M (169:) s
+428.8 352 M
+(        t.start\(\)) s
+401.8 342 M (170:) s
+401.8 332 M (171:) s
+428.8 332 M
+(    ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+450.4 332 M
+(for) s
+/F-gs-font 9 9 SF
+0 setgray
+466.6 332 M
+( t ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+482.8 332 M
+(in) s
+/F-gs-font 9 9 SF
+0 setgray
+493.6 332 M
+( cts:     ) s
+401.8 322 M (172:) s
+428.8 322 M
+(        ct.join\(\)) s
+401.8 312 M (173:) s
+428.8 312 M
+(    mt.join\(\)) s
+401.8 302 M (174:) s
+428.8 302 M
+(    ct.join\(\)) s
+401.8 292 M (175:) s
+428.8 292 M
+(    ) s
+401.8 282 M (176:) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+428.8 282 M
+(if) s
+/F-gs-font 9 9 SF
+0 setgray
+439.6 282 M
+( __name__ == ) s
+/Courier-Bold 9 9 SUF
+0.737255 0.560784 0.560784 setrgbcolor
+509.8 282 M
+('__main__') s
+/F-gs-font 9 9 SF
+0 setgray
+563.8 282 M
+(:) s
+401.8 272 M (177:) s
+401.8 262 M (178:) s
+428.8 262 M
+(    ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+450.4 262 M
+(import) s
+/F-gs-font 9 9 SF
+0 setgray
+482.8 262 M
+( sys) s
+401.8 252 M (179:) s
+428.8 252 M
+(    args = sys.argv[1:]) s
+401.8 242 M (180:) s
+428.8 242 M
+(    argc = len\(args\)) s
+401.8 232 M (181:) s
+401.8 222 M (182:) s
+428.8 222 M
+(    customers_count = 10) s
+401.8 212 M (183:) s
+428.8 212 M
+(    max_cones_per_customer = 5) s
+401.8 202 M (184:) s
+428.8 202 M
+(    approved_rate = 9) s
+401.8 192 M (185:) s
+428.8 192 M
+(    ) s
+401.8 182 M (186:) s
+428.8 182 M
+(    ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+450.4 182 M
+(if) s
+/F-gs-font 9 9 SF
+0 setgray
+461.2 182 M
+( \(argc > 0\): customers_count = int\(args[0]\)) s
+401.8 172 M (187:) s
+428.8 172 M
+(    ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+450.4 172 M
+(if) s
+/F-gs-font 9 9 SF
+0 setgray
+461.2 172 M
+( \(argc > 1\): max_cones_per_customer = int\(args[1]\)) s
+401.8 162 M (188:) s
+428.8 162 M
+(    ) s
+/Courier-Bold 9 9 SUF
+0.627451 0.12549 0.941176 setrgbcolor
+450.4 162 M
+(if) s
+/F-gs-font 9 9 SF
+0 setgray
+461.2 162 M
+( \(argc > 2\): approved_rate = int\(args[2]\)) s
+401.8 152 M (189:) s
+401.8 142 M (190:) s
+428.8 142 M
+(    main\(customers_count,) s
+401.8 132 M (191:) s
+428.8 132 M
+(         max_cones_per_customer,) s
+401.8 122 M (192:) s
+428.8 122 M
+(         approved_rate\)) s
+_R
+S
+%%Trailer
+%%Pages: 2
+%%DocumentNeededResources: font Courier-Oblique Courier-Bold Courier 
+%%EOF

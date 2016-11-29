@@ -1,0 +1,322 @@
+* export headers                                                   :noexport:
+#+TITLE: Coni gelato: esempio di programmazione concorrente
+#+DATE:  2014
+#+AUTHOR: Luca Manini
+#+EMAIL: prof.manini@gmail.com
+#+OPTIONS: ':nil *:t -:t ::t <:t H:3 \n:nil ^:t arch:headline
+#+OPTIONS: author:t c:nil creator:comment d:(not "LOGBOOK") date:t
+#+OPTIONS: e:t email:nil f:t inline:t num:t p:nil pri:nil stat:t
+#+OPTIONS: tex:t toc:nil  |:t
+#+CREATOR: Emacs 24.3.1 (Org mode 8.2.4)
+#+DESCRIPTION:
+#+EXCLUDE_TAGS: noexport
+#+KEYWORDS:
+#+LANGUAGE: en
+#+SELECT_TAGS: export
+
+#+LATEX_CLASS: article
+#+LATEX_CLASS_OPTIONS: 
+#+LATEX_HEADER:
+#+LATEX_HEADER_EXTRA:
+
+#+LATEX_HEADER: \include{common-def}
+#+LATEX_HEADER: \include{common-packages}
+#+LATEX_HEADER: \include{common-pdf-setup}
+
+* Introduzione
+
+  Questo esempio di programmazione concorrente è preso da una delle
+  bellissime lezioni di Jeff Cain a Stanford (cercare su youtube "jeff
+  cain programming paradigm"). La versione originale è in C, questa è
+  una implementazione Python che segue comunque il più possibile
+  quella originale.
+
+* Il problema
+
+  L'ambiente è una gelateria. Ci sono dei clienti (/customer/) che
+  ordinano dei coni gelato a dei "camerieri" (/clerk/) e quando hanno
+  ottenuto i loro gelati vanno da un cassiere (/cachier/) a
+  pagare. Fin qui niente di strano. La complicazione è che i
+  camerieri, dopo aver preparato i gelati e prima di consegnarli ai
+  clienti li devono portare da un superiore (/manager/) che controlla
+  che i gelati siano OK.
+
+* La simulazione
+
+  La simulazione prevede dieci clienti, ciascuno dei quali chiederà un
+  numero di coni tra uno e cinque. Ogni cono viene preparato da un
+  cameriere diverso. C'è un solo manager che attende i camerieri nel
+  suo "ufficio" in cui, in ogni istante, ci può essere un solo
+  cameriere; il manager "boccia" alcuni coni (uno su dieci) in modo
+  casuale.  C'è un solo cassiere, e i clienti si mettono in fila alla
+  cassa (che quindi funziona in modalità FIFO, /first in first out/).
+
+  La simulazione ha un aspetto "irreale": invece di durare per un
+  certo tempo (con clienti che arrivano in numero e in tempi casuali)
+  il processo ha un numero fisso di clienti e un numero casuale (ma
+  calcolato prima dell'inizio della simulazione) per cui la
+  simulazione termina quando sono stati "gestiti" (fatti, controllati,
+  consegnati, pagati) tutti i gelati.
+
+* Sincronizzazione
+
+  Il processo, che verrà eseguito usando vari /thread/ in parallelo, è
+  piuttosto complicato, perché ci sono vari vincoli:
+
+  1) il manager aspetta che un qualche cameriere chieda di entrare nel
+     suo ufficio per farsi controllare il gelato, quando ha finito
+     l'ispezione lo segnala al cameriere;
+
+  2) i camerieri devono prenotarsi per l'ispezione, eventualmente
+     aspettando che il manager sia libero, e poi devono aspettare che
+     l'ispezione sia terminata (indipendentemente dall'esito);
+
+  3) un cliente deve "creare" un cameriere per ciascuno dei coni che
+     ordina, poi deve aspettare che tutti i camerieri gli abbiano
+     portato il rispettivo cono, e poi devono mettersi in fila
+     (prendere "il numero") per pagare, aspettare il loro turno,
+     pagare e andarsene;
+
+  4) il cassiere sta in attesa che arrivino i clienti a pagare.
+
+  Per la sincronizzazione vengono usati vari strumenti che ora vediamo
+  in dettaglio.
+
+** Classe =Inspection=
+
+   Questa classe, che nell'originale implementazione =C= è una
+   semplice struttura (=struct=), raggruppa gli elementi necessari
+   alla sincronizzazione tra il manager e i camerieri per quanto
+   riguarda il controllo (/inspection/) dei coni prima della loro
+   consegna ai clienti.  Ne esiste una sola istanza, che nella
+   versione originale era una variabile globale ma che io ho preferito
+   passare esplicitamente dal manager ed ai camerieri.  La struttura è
+   molto semplice:
+#+BEGIN_SRC python
+class Inspection():
+    def __init__(self):
+        self.passed = False
+        self.requested = threading.Semaphore(0)
+        self.finished = threading.Semaphore(0)
+        self.lock = threading.Semaphore(1)
+#+END_SRC
+
+   Il membro =lock= viene usato per il controllo dell'accesso alla
+   struttura e viene modificato solo dai camerieri (rispetto ai quali
+   funziona da sincronizzatore).  La cosa può sembrare strana, perché,
+   ad esempio, è il manager che modifica il membro =passed= (che i
+   camerieri si limitano a leggere).  Il motivo è che tutto il lavoro
+   di ispezione si svolge con un cameriere alla volta ed è il
+   cameriere che prende l'iniziativa.  Tutto il lavoro del manager si
+   svolge tra una =wait= su =requested= e una =signal= di =finished=
+   che "corrispondono" ad due chiamate consecutive di =signal= su
+   =requested= e =wait= su =finished= che vengono eseguite all'interno
+   di un /lock/ sulla struttura.
+
+   La coppia =requested= e =finished= è la tipica coppia utilizzata
+   per i /rendez-vous/ tra due "agenti".
+
+   Il membro =passed= serve ovviamente a passare il risultato
+   dell'ispezione dal manager al cameriere.
+
+** Classe =Line=
+
+   Anche questa classe, nella versione originale in =C=, è una
+   struttura di cui esiste una sola istanza globale, mentre qui è sì
+   una singola istanza ma viene passata come parametro al cassiere ed
+   ai clienti. Qui il /lock/ viene usato solo dai clienti, che devono
+   "prendere il numero" (=number=).  A differenza del caso
+   =Inspection=, qui il /lock/ non viene usato per la sincronizzazione
+   perché questa è gestita usando un vettore di semafori (=customers=)
+   popolato dai clienti e letto, in stile =FIFO= dal cassiere.
+
+   Sul membro =requested=, il cassiere fa una =wait= e i clienti fanno
+   una =signal=.
+
+#+BEGIN_SRC python
+class Line():
+    def __init__(self, customers_count):
+        self.number = 0
+        self.requested = threading.Semaphore(0)
+        self.customers = [threading.Semaphore(0)] * customers_count
+        self.lock = threading.Semaphore(1)
+#+END_SRC
+ 
+* I vari attori
+
+  Di seguito vediamo l'implementazione dei vari attori, ripulita dalle
+  chiamate di /logging/ e altre cose non fondamentali.
+
+** Il manager
+
+   La funzione =manager= è piuttosto semplice. È un ciclo, controllato
+   dal numero totale di coni che devono essere approvati, in cui il
+   manager aspetta che un cameriere richieda una "ispezione" (chiamata
+   a =down=), la esegue approvando "quasi sempre" e poi segnala di
+   aver finito l'ispezione (chiamata a =up=).
+
+#+BEGIN_SRC python
+  def manager(tot_cones): 
+      approved_count = 0
+      while approved_count < tot_cones:
+          wait(INSPECTION.requested)
+          INSPECTION.passed = random.choice(range(10)) > 0
+          if INSPECTION.passed:
+              approved_count += 1
+          signal(INSPECTION.finished)
+#+END_SRC
+
+** Il cameriere
+
+   La funzione =clerk= gestisce un singolo cono.  Il lavoro da
+   ripetere finché non si ottiene l'approvazione, è preparare il cono
+   (=make_cone=), richiedere l'ispezione, aspettare il verdetto.  Alla
+   fine si deve avvertire il cliente che il gelato è pronto usando il
+   semaforo =done_semaphore= che lo stesso cliente gli ha passato come
+   parametro.
+
+#+BEGIN_SRC python
+def clerk(id, customer, cone, done_semaphore):
+    passed = False
+    while not passed:
+        make_cone()
+        down(INSPECTION.lock)
+        up(INSPECTION.requested)
+        down(INSPECTION.finished)
+        passed = INSPECTION.passed
+        up(INSPECTION.lock)
+    up(done_semaphore)
+#+END_SRC
+
+** Il cliente
+
+   La funzione cliente riceve come parametro il numero di coni da
+   ordinare, "crea" un cameriere per ciascun cono, attende che tutti i
+   camerieri abbiano finito il loro lavoro e poi si "mette in fila"
+   alla cassa (si prenota per essere chiamato dal cassiere).
+
+#+BEGIN_SRC python
+    def customer(id, cones_count):
+        clerk_done = threading.Semaphore(0)
+        browse_flavours()
+        for c in range(cones_count):
+            t = threading.Thread(target=clerk, 
+                      args=(id * 10 + c, id, c, clerk_done))
+            t.start()
+        for c in range(cones_count):
+            down(clerk_done)
+        walk_to_cachier()
+#+END_SRC
+
+* La gestione dei semafori
+
+  L'implementazione usa un certo numero di semafori:
+
+  1) =requested=, =finished= e =lock= (in =Inspection=),
+  2) =requested=, =customers= (lista) e =lock= (in =Line=),
+  3) =clerk_done= (creato dai clienti e passato ai camerieri).
+
+  Le funzioni che "incrementano" e "decrementano" i semafori hanno
+  nomi diversi nei vari linguaggi e librerie, nei vari libri di testo
+  e nei vari contesti (=up= e =down=, =signal= e =wait=, =release= e
+  =acquire=). In questa implementazione, i semafori sono forniti dalla
+  classe =Threading= della libreria =threading= e i nomi dei metodi
+  sono =release= e =acquire=. Questi nomi sono appropriati quando i
+  semafori sono usati come /lock/, ma quando i semafori vengono usati
+  per la sincronizzazione mi pare più chiaro usare =wait= e =signal=
+  (o forse sarebbe meglio anche =wake_up=).  Ho quindi scelto di
+  definire degli alias ed usare quelli.
+
+  Avrei potuto anche "mascherare" queste chiamate usando delle
+  funzioni con nomi più specifici, ad esempio definire una funzione
+  =ask_for_inspection= che faccia =signal(inspection.requested)= ma
+  non credo che la leggibilità del programma sarebbe migliorata e poi
+  questo esempio è proprio un esercizio di uso dei semafori e quindi
+  quanto più esplicito tanto meglio.
+
+* Come *decostruire* (leggere) la soluzione 
+
+  Anche dopo aver letto e capito tutte le spiegazioni ed i commenti,
+  resta il problema di comprendere *bene* la soluzione, capendo ciò
+  che non è reso chiaramente dal codice.  Il codice infatti, letto in
+  sequenza come un qualsiasi testo, può rendere chiaramente le
+  strutture dati e la sequenza delle *istruzioni* (statica), ma i
+  *collegamenti* e la sequenza delle *operazioni* (dinamica) non sono
+  così evidenti, in particolare con questi giochi di attese e riprese
+  dovute all'uso dei semafori.
+
+  Quindi, invece di seguire la sequenza delle chiamata (il flusso di
+  controllo) come si fa di solito, è più utile cercare dove è usato
+  ciascun semaforo ovvero  le coppie di =acquire= e =release= e ancora
+  di più le coppie =wait= e =signal=.  
+
+  Vediamo quindi in dettaglio come si può eseguire questa "indagine",
+  cominciando dai casi più semplici.
+
+** Interazione clienti-camerieri (=clerk_done=)
+
+   Se si cercano nel codice le chiamate alla classe =Semaphore= per
+   creare nuovi semafori, se ne trovano sette (di cui una in un
+   ciclo). Una di queste, nella prima riga della funzione =customer=,
+   crea un semaforo =clerk_done= con valore iniziale zero. Questo
+   semaforo viene passato ai /thread/ dei camerieri.  Se adesso cerco
+   dove questo semaforo viene utilizzato trovo due punti:
+   - delle chiamate a =wait= nel cliente, per mettersi in attesa del
+     cameriere;
+   - in una =signal= nel cameriere (come ultima istruzione) per
+     segnalare al cliente che il suo cono è pronto (e ha passato il
+     controllo).
+   È importante notare che ogni cliente crea ed usa un suo proprio
+   semaforo che "passa" a tutti i "propri" camerieri per cui ci
+   saranno molte istanze di questo semaforo (magari non
+   contemporaneamente) ma in compenso non sussiste il problema di
+   sapere "di quale cliente è il gelato appena preparato" (cosa che
+   complicherebbe abbastanza l'implementazione!).
+
+** Interazione clienti-cassiere (=Line=)
+
+   Questa volta cerco le chiamate alla classe =Line=, ne trovo solo
+   una nel =main=, quindi c'è una sola istanza a cui è assegnato il
+   nome =line=.  Se ora cerco =line= trovo una dozzina di occorrenze:
+   la più facile da capire è nel =main= dove scopro che viene passata
+   alla funzione che implementa il cassiere (=cachier=). Le altre, che
+   vediamo di seguito, sono nella funzione =cachier= stessa e in
+   quella che implementa il cliente (=customer=).
+
+   La parte in =cachier= è semplice: il cassiere implementa un ciclo
+   in cui aspetta (=wait(line.requested)=) che tutti i clienti (di cui
+   conosce già il numero, =customers_count=) vengano a pagare.  Notare
+   che la =wait= è "generica" (non aspetto un cliente in particolare)
+   ma l'ordine in cui i clienti vengono serviti è lo stesso in cui si
+   sono prenotati (il perché si capirà tra poco).
+
+   In =customer=, =line= viene usata per due scopi diversi: il primo è
+   prelevare il numero di "ticket" corrente (=line.number=), il
+   secondo è risvegliare il cassiere (=signal(line.requested)=) e
+   mettersi in attesa sul "proprio" semaforo tra quelli di
+   =line.customers=.
+
+** Interazione camerieri-manager (=Inspection=)
+
+   Anche in questo caso cerco la chiamata e =Inspection=, ne trovo una
+   sola nel =main= che crea un nuovo oggetto e lo assegna alla
+   variabile =inspection= che viene passata a ciascun cliente (che poi
+   la passerà ai "propri" camerieri).  Se ora cerco i punti in cui
+   questa variabile viene usata ne trovo, ovviamente, sia in =manager=
+   che in =clerk=.
+
+   La parte più facile è quella in =manager=, perché il manager si
+   limita ad aspettare che qualche cameriere richieda una ispezione
+   (=wait(inspection.requested)=), fare l'ispezione e poi risvegliare
+   il cameriere (=signal(inspection.finished)=).
+
+   La parte in =customer= è un po' più complessa.  La prima cosa da
+   notare è che tutte le occorrenze di =inspection= sono racchiuse in
+   una coppia di =acquire= e =release= del relativo =lock=.  Ciò
+   significa che è il cameriere che gestisce la sincronizzazione con
+   il manager (più passivo).  Detto questo il resto è facile: una
+   coppia =signal(inspection.requested)= e =wait(inspection.finished)=
+   per richiedere (e fare quindi scattare una esecuzione di =manager=)
+   e aspettare il controllo ed il suo risultato.
+
+* Come *costruire* (scrivere) la soluzione
